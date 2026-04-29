@@ -1,11 +1,13 @@
 name: Update Ledger and Deploy Pages
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - 'utxo/**'
       - 'validators/**'
+      - 'docs/index.html'
 
 permissions:
   contents: read
