@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transactions — GitCoin Explorer</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh;padding:2rem 1rem}
+    a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}
+    code{font-family:"SFMono-Regular",Consolas,monospace;font-size:.85em;background:#21262d;padding:.1em .4em;border-radius:4px}
+    .container{max-width:960px;margin:0 auto}
+    nav{display:flex;align-items:center;gap:1.5rem;margin-bottom:2rem;border-bottom:1px solid #30363d;padding-bottom:1rem}
+    nav .brand{font-size:1.2rem;font-weight:700;color:#58a6ff;text-decoration:none}
+    nav a{color:#8b949e;font-size:.9rem}nav a:hover{color:#e6edf3}
+    nav a.active{color:#e6edf3;font-weight:600}
+    .page-header{margin-bottom:1.5rem}
+    .page-header h1{font-size:1.5rem;font-weight:700;margin-bottom:.3rem}
+    .page-header p{color:#8b949e;font-size:.875rem}
+    .card{background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden}
+    table{width:100%;border-collapse:collapse}
+    thead{background:#21262d}
+    th{padding:.65rem 1rem;text-align:left;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#8b949e}
+    td{padding:.72rem 1rem;border-top:1px solid #21262d;font-size:.875rem;vertical-align:middle}
+    tr:hover td{background:#1c2128}
+    .mono{font-family:"SFMono-Regular",Consolas,monospace;font-size:.82rem}
+    .muted{color:#8b949e}
+    .green{color:#3fb950}
+    .arrow{color:#8b949e;margin:0 .3rem}
+    .empty{text-align:center;color:#8b949e;padding:3rem}
+    footer{margin-top:2rem;text-align:center;color:#8b949e;font-size:.8rem}
+    @media(max-width:600px){th,td{padding:.55rem .6rem}.hide-sm{display:none}}
+  </style>
+</head>
+<body>
+<div class="container">
+  <nav>
+    <a class="brand" href="index.html">&#9931; GitCoin</a>
+    <a href="balances.html">Balances</a>
+    <a href="transactions.html" class="active">Transactions</a>
+    <a href="validators.html">Validators</a>
+    <a href="https://github.com/volta2030/gitcoin" target="_blank" style="margin-left:auto">GitHub &#8599;</a>
+  </nav>
+
+  <div class="page-header">
+    <h1>Transactions</h1>
+    <p id="subtitle">Loading...</p>
+  </div>
+
+  <div id="content" class="card"><p class="empty">Loading...</p></div>
+
+  <footer>
+    Each transaction is a merge commit on <a href="https://github.com/volta2030/gitcoin/commits/main" target="_blank">main</a>
+  </footer>
+</div>
+<script>
+const REPO='volta2030/gitcoin';
+async function load(){
+  let l;
+  try{const r=await fetch('./ledger.json?t='+Date.now());if(!r.ok)throw new Error('HTTP '+r.status);l=await r.json()}
+  catch(e){document.getElementById('content').innerHTML='<p class="empty" style="color:#f85149">Failed to load: '+e.message+'</p>';return}
+  const txs=l.transactions||[];
+  document.getElementById('subtitle').textContent=txs.length+' transactions recorded';
+  if(!txs.length){document.getElementById('content').innerHTML='<p class="empty">No transactions yet.</p>';return}
+  const rows=txs.map(tx=>{
+    const date=(tx.date||'').substring(0,10);
+    const hashLink=`<a href="https://github.com/${REPO}/commit/${tx.full_hash}" target="_blank" class="mono">${tx.hash}</a>`;
+    const transfer=tx.from
+      ?`<a href="https://github.com/${tx.from}" target="_blank">@${tx.from}</a><span class="arrow">&#8594;</span><a href="https://github.com/${tx.to}" target="_blank">@${tx.to}</a>`
+      :`<span class="muted">${(tx.subject||'').substring(0,60)}</span>`;
+    const amount=tx.amount!=null?`<span class="green mono">${tx.amount.toLocaleString()} GTC</span>`:'';
+    return `<tr>
+      <td>${hashLink}</td>
+      <td>${transfer}</td>
+      <td style="text-align:right">${amount}</td>
+      <td class="muted hide-sm" style="text-align:right">${date}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('content').innerHTML=`<table>
+    <thead><tr><th>Commit</th><th>Transfer</th><th style="text-align:right">Amount</th><th class="hide-sm" style="text-align:right">Date</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+load();
+</script>
+</body>
+</html>

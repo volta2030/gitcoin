@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Validators — GitCoin Explorer</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh;padding:2rem 1rem}
+    a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}
+    code{font-family:"SFMono-Regular",Consolas,monospace;font-size:.85em;background:#21262d;padding:.1em .4em;border-radius:4px}
+    .container{max-width:960px;margin:0 auto}
+    nav{display:flex;align-items:center;gap:1.5rem;margin-bottom:2rem;border-bottom:1px solid #30363d;padding-bottom:1rem}
+    nav .brand{font-size:1.2rem;font-weight:700;color:#58a6ff;text-decoration:none}
+    nav a{color:#8b949e;font-size:.9rem}nav a:hover{color:#e6edf3}
+    nav a.active{color:#e6edf3;font-weight:600}
+    .page-header{margin-bottom:1.5rem}
+    .page-header h1{font-size:1.5rem;font-weight:700;margin-bottom:.3rem}
+    .page-header p{color:#8b949e;font-size:.875rem}
+    .card{background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden}
+    table{width:100%;border-collapse:collapse}
+    thead{background:#21262d}
+    th{padding:.65rem 1rem;text-align:left;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#8b949e}
+    td{padding:.72rem 1rem;border-top:1px solid #21262d;font-size:.875rem;vertical-align:middle}
+    tr:hover td{background:#1c2128}
+    .mono{font-family:"SFMono-Regular",Consolas,monospace;font-size:.82rem}
+    .muted{color:#8b949e}
+    .badge{display:inline-block;font-size:.68rem;font-weight:700;padding:.2em .6em;border-radius:12px;text-transform:uppercase;letter-spacing:.04em}
+    .badge-green{background:#1a4a2e;color:#3fb950}
+    .badge-gray{background:#21262d;color:#8b949e}
+    .join-box{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.25rem 1.5rem;margin-top:1rem;font-size:.875rem;color:#8b949e;line-height:1.7}
+    .join-box strong{color:#e6edf3}
+    .empty{text-align:center;color:#8b949e;padding:3rem}
+    footer{margin-top:2rem;text-align:center;color:#8b949e;font-size:.8rem}
+    @media(max-width:600px){th,td{padding:.55rem .6rem}.hide-sm{display:none}}
+  </style>
+</head>
+<body>
+<div class="container">
+  <nav>
+    <a class="brand" href="index.html">&#9931; GitCoin</a>
+    <a href="balances.html">Balances</a>
+    <a href="transactions.html">Transactions</a>
+    <a href="validators.html" class="active">Validators</a>
+    <a href="https://github.com/volta2030/gitcoin" target="_blank" style="margin-left:auto">GitHub &#8599;</a>
+  </nav>
+
+  <div class="page-header">
+    <h1>Validators</h1>
+    <p id="subtitle">Loading...</p>
+  </div>
+
+  <div id="content" class="card"><p class="empty">Loading...</p></div>
+
+  <div class="join-box">
+    <strong>Want to become a validator?</strong><br>
+    Generate an Ed25519 keypair with <code>python3 .github/scripts/generate_keypair.py</code>,
+    then open a <code>REGISTER_KEY</code> PR adding your entry to <code>validators/pubkeys.json</code>.
+    Any existing validator can approve it with <code>/approve</code>.
+    <br><br>
+    <a href="https://github.com/volta2030/gitcoin#becoming-a-validator" target="_blank">Read the docs &#8599;</a>
+  </div>
+
+  <footer>
+    Validator pool sourced from <a href="https://github.com/volta2030/gitcoin/blob/main/validators/pubkeys.json" target="_blank"><code>validators/pubkeys.json</code></a>
+  </footer>
+</div>
+<script>
+async function load(){
+  let l;
+  try{const r=await fetch('./ledger.json?t='+Date.now());if(!r.ok)throw new Error('HTTP '+r.status);l=await r.json()}
+  catch(e){document.getElementById('content').innerHTML='<p class="empty" style="color:#f85149">Failed to load: '+e.message+'</p>';return}
+  const validators=l.validators||[];
+  document.getElementById('subtitle').textContent=validators.length+' registered validators';
+  if(!validators.length){document.getElementById('content').innerHTML='<p class="empty">No validators registered yet.</p>';return}
+  const rows=validators.map(v=>{
+    const cls=v.status==='active'?'badge-green':'badge-gray';
+    const shortKey=v.pubkey?v.pubkey.substring(0,22)+'...':'N/A';
+    const lastActive=(v.last_active||'').substring(0,10)||'—';
+    return `<tr>
+      <td><a href="https://github.com/${v.username}" target="_blank">@${v.username}</a></td>
+      <td class="mono muted hide-sm" title="${v.pubkey||''}">${shortKey}</td>
+      <td style="text-align:right">${v.score!=null?v.score:100}</td>
+      <td class="muted hide-sm" style="text-align:right">${lastActive}</td>
+      <td style="text-align:center"><span class="badge ${cls}">${v.status||'active'}</span></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('content').innerHTML=`<table>
+    <thead><tr><th>Validator</th><th class="hide-sm">Public Key</th><th style="text-align:right">Score</th><th class="hide-sm" style="text-align:right">Last Active</th><th style="text-align:center">Status</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+load();
+</script>
+</body>
+</html>
