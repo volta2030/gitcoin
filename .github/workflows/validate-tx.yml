@@ -17,18 +17,23 @@ jobs:
         with:
           ref: main
 
-      - name: Check if this is a transaction PR
+      - name: Check PR type
         id: is_tx
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          if echo "$PR_BODY" | grep -q "TX_VERSION"; then
+          if echo "$PR_BODY" | grep -q "TX_VERSION: REGISTER_KEY"; then
             echo "is_tx=true" >> $GITHUB_OUTPUT
+            echo "is_register=true" >> $GITHUB_OUTPUT
+          elif echo "$PR_BODY" | grep -q "TX_VERSION"; then
+            echo "is_tx=true" >> $GITHUB_OUTPUT
+            echo "is_register=false" >> $GITHUB_OUTPUT
           else
             echo "is_tx=false" >> $GITHUB_OUTPUT
+            echo "is_register=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Post success status for non-TX PRs
+      - name: Post success status for non-TX PRs (code/docs changes)
         if: steps.is_tx.outputs.is_tx == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -41,6 +46,20 @@ jobs:
             -f state=success \
             -f context="consensus-check/passed" \
             -f description="Not a transaction PR, consensus not required"
+
+      - name: Post validate success + consensus pending for REGISTER_KEY PRs
+        if: steps.is_tx.outputs.is_register == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}" \
+            -f state=success \
+            -f context="validate-tx/validate" \
+            -f description="REGISTER_KEY PR format valid"
+          gh api "repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}" \
+            -f state=pending \
+            -f context="consensus-check/passed" \
+            -f description="Waiting for 1 validator /approve to register key"
 
       - name: Install Python dependencies
         if: steps.is_tx.outputs.is_tx == 'true'
