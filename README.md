@@ -18,6 +18,7 @@ No servers, no wallets, no gas fees — just forks, pull requests, and consensus
 | Validator / miner | Any GitHub account with a registered public key in `validators/pubkeys.json` |
 | Consensus | ⌈2/3⌉ selected validators comment `/approve` |
 | Double-spend guard | Git merge conflict (two PRs can't delete the same file) |
+| UTXO integrity | Merkle inclusion proof (O(log n) per input) verified against `ledger.json` |
 | Total supply | 4,294,967,295 GTC (fixed, no inflation) |
 | Minimum unit | 1 GTC (integer amounts only) |
 
@@ -25,16 +26,185 @@ No servers, no wallets, no gas fees — just forks, pull requests, and consensus
 
 ```
 1. Pull the latest main branch
-2. Run create_transaction.py — builds, signs, writes UTXO files, and git rm's inputs automatically
+2. Run create_transaction.py
+   - Lists your UTXOs with numbered shortcuts
+   - Fetches current Merkle root from ledger.json (GitHub Pages)
+   - Builds and signs the TX, computes a Merkle inclusion proof per input
+   - Writes output UTXO files and git rm's inputs automatically
 3. git add utxo/ && git commit && git push to a new branch, open a PR
-4. validate-tx.yml verifies signature and UTXO ownership
-5. On success: tx-valid label + Validator Vote Requested comment posted (same workflow, no separate trigger)
+4. validate-tx.yml:
+   a. Verifies Ed25519 signature and UTXO ownership
+   b. Verifies Merkle inclusion proof matches the canonical root in ledger.json
+   c. Verifies output txids are cryptographically derived from inputs (chain integrity)
+5. On success: tx-valid label + Validator Vote Requested comment posted
 6. Selected validators comment /approve on the PR
 7. When ⌈2/3⌉ approvals are reached, PR can be merged
-8. update-pages.yml rebuilds the explorer (Balances / Transactions / Validators)
+8. update-pages.yml rebuilds ledger.json (with new Merkle root) and deploys explorer
 ```
 
-> Non-TX PRs (key registration, code changes) skip validation entirely and get immediate `success` status on both required checks, so they are never blocked.
+> Non-TX PRs (key registration, code changes) skip validation entirely and get immediate `success` status on both required checks.
+
+---
+
+## Chain Integrity & Merkle Proof
+
+Each TX PR must include:
+
+| Field | Description |
+|---|---|
+| `MERKLE_ROOT` | SHA-256 Merkle root of the entire UTXO set at PR creation time |
+| `MERKLE_PROOF` | JSON map of `txid → proof path` — one inclusion proof per input UTXO |
+
+`create_transaction.py` generates these automatically by fetching `ledger.json` from GitHub Pages.
+
+**Why this matters:**
+- The validator only needs to walk O(log n) hashes per input instead of scanning all UTXOs
+- If another TX is merged while your PR is open, the root changes and your proof becomes invalid — you must regenerate the TX. This is by design: it prevents double-spending the same UTXO across two concurrent PRs.
+- Past transactions are unaffected — already-merged UTXOs on `main` are settled and do not require re-validation.
+
+---
+
+## Requirements
+
+```bash
+pip install cryptography
+```
+
+You also need:
+- A GitHub account
+- Git installed locally
+- `gh` CLI (optional): https://cli.github.com
+
+---
+
+## Quick Start
+
+### Step 1 — Fork this repository
+
+Click **Fork** at the top of this page. Your fork is your full node — it contains the entire ledger history.
+
+### Step 2 — Generate your Ed25519 identity
+
+```bash
+git clone https://github.com/YOUR_USERNAME/gitcoin
+cd gitcoin
+python3 .github/scripts/generate_keypair.py
+```
+
+Output:
+```
+⚠️  PRIVATE KEY — Keep this secret, never commit it:
+  <your-private-key-base64url>
+
+✅  PUBLIC KEY — Share this in your REGISTER_KEY PR:
+  <your-public-key-base64url>
+```
+
+**Store your private key in a password manager.** If you lose it, you lose access to your coins. Never commit it to any repository.
+
+### Step 3 — Register your public key
+
+Before you can send GTC, your public key must be in `validators/pubkeys.json`.
+
+**Create a PR** to this repo's `main` branch with:
+
+**Changed file** — add your entry to `validators/pubkeys.json`:
+```json
+{
+  "existing_user": "their_key",
+  "YOUR_GITHUB_USERNAME": "YOUR_PUBLIC_KEY_BASE64URL"
+}
+```
+
+**PR title**: `register: YOUR_GITHUB_USERNAME`
+
+**PR body**: anything (no `TX_VERSION` needed — the workflow detects this is not a TX and auto-approves both required status checks immediately).
+
+Once merged, you are automatically added to the validator pool.
+
+---
+
+## Checking Your Balance
+
+Visit the live balance explorer:
+```
+https://<owner>.github.io/gitcoin/
+```
+
+Or inspect the ledger directly:
+```bash
+git pull origin main
+cat docs/ledger.json   # includes merkle_root and utxo_txids
+```
+
+---
+
+## Sending GTC
+
+### Step 1 — Pull the latest state
+
+```bash
+git pull origin main
+```
+
+### Step 2 — Run the transaction builder
+
+```bash
+python3 .github/scripts/create_transaction.py
+```
+
+The script will:
+1. Show your UTXOs as a numbered list — enter `1` or `1,2` instead of full txids
+2. Fetch the current Merkle root from GitHub Pages
+3. Build and sign the TX, compute inclusion proofs
+4. Write output UTXO files and `git rm` input files automatically
+
+### Step 3 — Commit and push
+
+```bash
+git add utxo/
+git commit -m "tx: YOUR_USERNAME → RECIPIENT 50 GTC"
+git push origin <new-branch-name>
+```
+
+### Step 4 — Open a PR
+
+Open a Pull Request to **this repository's `main` branch**.
+
+- **PR title**: `tx: YOUR_USERNAME → RECIPIENT 50 GTC`
+- **PR body**: paste the full block from the script output (includes `MERKLE_ROOT` and `MERKLE_PROOF`)
+
+### Step 5 — Wait for consensus
+
+`validate-tx.yml` runs automatically. If valid:
+- `tx-valid` label is attached
+- A **Validator Vote Requested** comment lists selected validators and deadline
+- When ⌈2/3⌉ validators `/approve`, merge the PR
+
+> **If another TX merges while your PR is open**, the Merkle root changes and validation will fail with *"Merkle root mismatch"*. Rerun `create_transaction.py` on the latest `main` to regenerate a fresh proof.
+
+---
+
+## Becoming a Validator
+
+Anyone with a registered public key in `validators/pubkeys.json` is a validator.
+
+### How to join
+
+1. Generate your keypair: `python3 .github/scripts/generate_keypair.py`
+2. Open a PR adding `"YOUR_USERNAME": "YOUR_PUBLIC_KEY"` to `validators/pubkeys.json`
+3. Once merged, you are immediately in the validator pool
+
+### Scoring (optional metadata)
+
+Scores in `validators/registry.json` influence selection probability. Anyone not listed defaults to **100 points**.
+
+| Action | Points |
+|---|---|
+| Comment `/approve` on a valid TX | +20 |
+| Submitting a valid TX that gets merged | +5 |
+
+Inactivity penalty: **−10 points per week** with no `/approve` activity.
 
 ---
 
