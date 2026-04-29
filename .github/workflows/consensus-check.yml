@@ -87,7 +87,31 @@ jobs:
               sys.exit(1)
           comments = json.loads(r.stdout)
 
-          # Find assign-validators comment to get selected list and required count
+          # Detect PR type from PR body
+          r_pr = subprocess.run(
+              ['gh', 'api', f'repos/{repo}/pulls/{pr_number}'],
+              capture_output=True, text=True, env=os.environ
+          )
+          pr_body = json.loads(r_pr.stdout).get('body', '') or ''
+          is_register = 'TX_VERSION: REGISTER_KEY' in pr_body
+
+          if is_register:
+              # REGISTER_KEY: any 1 existing validator can /approve
+              approvals = set()
+              for c in comments:
+                  user = c.get('user', {}).get('login', '')
+                  body = c.get('body', '').strip()
+                  if body == '/approve' and user in valid_validators:
+                      approvals.add(user)
+              approval_count = len(approvals)
+              print(f"REGISTER_KEY approvals: {approval_count}/1 required (by: {sorted(approvals)})")
+              if approval_count >= 1:
+                  post_status('success', f'Key registration approved by: {sorted(approvals)[0]}')
+              else:
+                  post_status('pending', 'Waiting for 1 validator /approve to register key')
+              sys.exit(0)
+
+          # TRANSFER: find assign-validators comment to get selected list and required count
           selected_validators = None
           required = None
           for c in comments:
