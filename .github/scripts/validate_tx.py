@@ -73,6 +73,88 @@ def canonical_message(tx: dict) -> str:
     return '\n'.join(lines)
 
 
+def verify_chain(tx: dict, head_content: dict):
+    """
+    Full chain validation for TRANSFER transactions.
+
+    Chain integrity rules:
+      1. Each input UTXO's txid must equal sha256(owner + amount + created_at_block).
+         This proves the file was not tampered with and is genuinely derived from a
+         previous transaction.
+      2. tx_nonce = sha256(FROM + TO + AMOUNT + sorted(INPUT_TXIDS)).
+         Output txids must be derived as:
+           OUTPUT_TO_TXID     = sha256(TO    + AMOUNT        + tx_nonce)
+           OUTPUT_CHANGE_TXID = sha256(FROM  + change_amount + tx_nonce + "change")
+         This proves the output UTXOs are cryptographically bound to the stated inputs.
+      3. Each output UTXO file's created_at_block must equal tx_nonce.
+    """
+    input_txids_sorted = sorted(t.strip() for t in tx['INPUT_TXIDS'].split(',') if t.strip())
+    amount = int(tx['AMOUNT'])
+
+    # --- Rule 1: input UTXO txid integrity ---
+    input_total = 0
+    for txid in input_txids_sorted:
+        utxo_path = Path(f"utxo/{txid}.json")
+        if not utxo_path.exists():
+            continue  # already caught by validate_transfer
+        try:
+            utxo = json.loads(utxo_path.read_text())
+        except json.JSONDecodeError:
+            continue
+        owner = utxo.get('owner', '')
+        utxo_amount = int(utxo.get('amount', 0))
+        created_at_block = utxo.get('created_at_block', '')
+        expected_txid = hashlib.sha256(f"{owner}{utxo_amount}{created_at_block}".encode()).hexdigest()
+        if expected_txid != txid:
+            fail(
+                f"Chain integrity failure: input UTXO '{txid}' txid does not match "
+                f"sha256(owner+amount+created_at_block)='{expected_txid}'. "
+                f"The UTXO file was tampered with or was not created by create_transaction.py."
+            )
+        input_total += utxo_amount
+
+    # --- Rule 2: output txid derivation ---
+    tx_seed = f"{tx['FROM']}{tx['TO']}{amount}{','.join(input_txids_sorted)}"
+    tx_nonce = hashlib.sha256(tx_seed.encode()).hexdigest()
+
+    expected_to_txid = hashlib.sha256(f"{tx['TO']}{amount}{tx_nonce}".encode()).hexdigest()
+    if tx['OUTPUT_TO_TXID'] != expected_to_txid:
+        fail(
+            f"Chain integrity failure: OUTPUT_TO_TXID '{tx['OUTPUT_TO_TXID']}' "
+            f"is not correctly derived from transaction inputs "
+            f"(expected '{expected_to_txid}'). "
+            f"Use create_transaction.py to generate a valid transaction."
+        )
+
+    if tx.get('OUTPUT_CHANGE_TXID'):
+        change_amount = input_total - amount
+        expected_change_txid = hashlib.sha256(
+            f"{tx['FROM']}{change_amount}{tx_nonce}change".encode()
+        ).hexdigest()
+        if tx['OUTPUT_CHANGE_TXID'] != expected_change_txid:
+            fail(
+                f"Chain integrity failure: OUTPUT_CHANGE_TXID '{tx['OUTPUT_CHANGE_TXID']}' "
+                f"is not correctly derived (expected '{expected_change_txid}'). "
+                f"Use create_transaction.py to generate a valid transaction."
+            )
+
+    # --- Rule 3: output UTXO created_at_block == tx_nonce ---
+    for filename, content in head_content.items():
+        if not filename.startswith('utxo/'):
+            continue
+        try:
+            utxo = json.loads(content)
+        except json.JSONDecodeError:
+            continue
+        if utxo.get('created_at_block') != tx_nonce:
+            fail(
+                f"Chain integrity failure: output UTXO '{filename}' "
+                f"created_at_block '{utxo.get('created_at_block')}' "
+                f"does not match tx_nonce '{tx_nonce}'. "
+                f"Use create_transaction.py to generate output UTXO files."
+            )
+
+
 def verify_ed25519(public_key_b64: str, message: str, signature_b64: str) -> bool:
     try:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -251,6 +333,9 @@ def validate_transfer(tx: dict, pr_author: str, pr_files: list, head_content: di
     msg = canonical_message(tx)
     if not verify_ed25519(pubkeys[tx['FROM']], msg, tx['SIGNATURE']):
         fail("Ed25519 signature verification failed")
+
+    # Full chain validation
+    verify_chain(tx, head_content)
 
 
 def main():
