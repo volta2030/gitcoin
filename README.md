@@ -3,7 +3,7 @@
 A fully decentralized token ecosystem that runs entirely on GitHub.
 No servers, no wallets, no gas fees — just forks, pull requests, and consensus.
 
-**Live Balance Explorer**: `https://<owner>.github.io/gitcoin/`
+**Live Balance Explorer**: https://volta2030.github.io/gitcoin/ — Balances, Transactions, Validators tabs
 
 ---
 
@@ -15,7 +15,7 @@ No servers, no wallets, no gas fees — just forks, pull requests, and consensus
 | Transaction | Pull Request with UTXO file changes |
 | Block | Merge commit on `main` |
 | Hash chain | Git commit history |
-| Validator / miner | GitHub account with contribution score ≥ 100 |
+| Validator / miner | Any GitHub account with a registered public key in `validators/pubkeys.json` |
 | Consensus | ⌈2/3⌉ selected validators comment `/approve` |
 | Double-spend guard | Git merge conflict (two PRs can't delete the same file) |
 | Total supply | 4,294,967,295 GTC (fixed, no inflation) |
@@ -24,15 +24,17 @@ No servers, no wallets, no gas fees — just forks, pull requests, and consensus
 ### Transaction lifecycle
 
 ```
-1. You fork this repo and pull the latest main branch
-2. You run create_transaction.py to build and sign a TX
-3. You push the file changes to your fork and open a PR
-4. validate-tx.yml verifies your signature and UTXO ownership
-5. assign-validators.yml @mentions up to 7 randomly selected validators
-6. Validators comment /approve on the PR
-7. When ⌈2/3⌉ approvals are reached, GitHub auto-merge fires
-8. update-pages.yml rebuilds the balance explorer
+1. Pull the latest main branch
+2. Run create_transaction.py — builds, signs, writes UTXO files, and git rm's inputs automatically
+3. git add utxo/ && git commit && git push to a new branch, open a PR
+4. validate-tx.yml verifies signature and UTXO ownership
+5. On success: tx-valid label + Validator Vote Requested comment posted (same workflow, no separate trigger)
+6. Selected validators comment /approve on the PR
+7. When ⌈2/3⌉ approvals are reached, PR can be merged
+8. update-pages.yml rebuilds the explorer (Balances / Transactions / Validators)
 ```
+
+> Non-TX PRs (key registration, code changes) skip validation entirely and get immediate `success` status on both required checks, so they are never blocked.
 
 ---
 
@@ -76,11 +78,11 @@ Output:
 
 ### Step 3 — Register your public key
 
-Before you can send GTC, validators must know your public key.
+Before you can send GTC, your public key must be in `validators/pubkeys.json`.
 
-**Create a PR** from your fork to this repo's `main` branch with:
+**Create a PR** to this repo's `main` branch with:
 
-**Changed file** — modify `validators/pubkeys.json` to add your entry:
+**Changed file** — add your entry to `validators/pubkeys.json`:
 ```json
 {
   "existing_user": "their_key",
@@ -88,16 +90,11 @@ Before you can send GTC, validators must know your public key.
 }
 ```
 
-**PR body** — must contain exactly:
-```
-TX_VERSION: REGISTER_KEY
-USERNAME: YOUR_GITHUB_USERNAME
-PUBLIC_KEY: YOUR_PUBLIC_KEY_BASE64URL
-```
-
 **PR title**: `register: YOUR_GITHUB_USERNAME`
 
-Once ⌈2/3⌉ validators approve the PR, it auto-merges and you can start transacting.
+**PR body**: anything (no `TX_VERSION` needed — the workflow detects this is not a TX and auto-approves both required status checks immediately).
+
+Once a maintainer merges the PR, you can start transacting — and you are automatically added to the validator pool.
 
 ---
 
@@ -155,50 +152,61 @@ The script outputs the exact PR body to copy and the file changes to make. It ca
 
 ### Step 4 — Commit and push the changes
 
+The script does `git rm` on input UTXOs and writes output files automatically. Just run:
+
 ```bash
 git add utxo/
 git commit -m "tx: YOUR_USERNAME → RECIPIENT 50 GTC"
-git push origin main
+git push origin <new-branch-name>
 ```
 
 ### Step 5 — Open a PR
 
-Open a Pull Request from **your fork's `main` branch** to **this repository's `main` branch**.
+Open a Pull Request to **this repository's `main` branch**.
 
 - **PR title**: `tx: YOUR_USERNAME → RECIPIENT 50 GTC`
-- **PR body**: paste the output from the transaction builder (the `TX_VERSION: 1 ...` block)
+- **PR body**: paste the `TX_VERSION: 1 ...` block from the script output
 
 ### Step 6 — Wait for consensus
 
-The `validate-tx.yml` workflow runs automatically. If valid, validators are @mentioned and have 48 hours to comment `/approve`. When ⌈2/3⌉ of selected validators approve, the PR auto-merges.
+`validate-tx.yml` runs automatically. If valid:
+- `tx-valid` label is attached
+- A **Validator Vote Requested** comment is posted listing selected validators and deadline
+- Selected validators comment `/approve` — anyone in `validators/pubkeys.json` is eligible
+- When ⌈2/3⌉ approvals are reached, merge the PR
 
 ---
 
 ## Becoming a Validator
 
-Validators are GitHub accounts with a **contribution score ≥ 100**.
+Anyone with a registered public key in `validators/pubkeys.json` is a validator.
 
-### How to earn score
+### How to join
+
+1. Generate your keypair: `python3 .github/scripts/generate_keypair.py`
+2. Open a PR adding `"YOUR_USERNAME": "YOUR_PUBLIC_KEY"` to `validators/pubkeys.json`
+3. Once merged, you are immediately in the validator pool
+
+### Scoring (optional metadata)
+
+Scores in `validators/registry.json` influence selection probability. Anyone not listed defaults to **100 points**.
 
 | Action | Points |
 |---|---|
-| Approved review (comment `/approve` on a valid TX) | +20 |
+| Comment `/approve` on a valid TX | +20 |
 | Submitting a valid TX that gets merged | +5 |
 
-### Score decay
-
-If you are inactive for weeks (no `/approve` comments), your effective score decreases by **10 points per week**. If your effective score drops below 0, you are temporarily excluded from validator selection until you participate again.
+Inactivity penalty: **−10 points per week** with no `/approve` activity.
 
 ### How to vote
 
-When a transaction PR is opened:
+When a transaction PR is validated:
 
-1. You receive a GitHub notification via @mention (watch this repo or enable notifications).
-2. Visit the PR and review the changes in `utxo/`.
-3. Verify the transaction looks correct (amounts, ownership).
-4. Comment exactly `/approve` to cast your vote.
+1. You receive a GitHub @mention in the **Validator Vote Requested** comment.
+2. Visit the PR, review the `utxo/` file changes.
+3. Comment exactly `/approve` to cast your vote.
 
-You have 48 hours. If the threshold is not reached, the PR is automatically closed.
+You have 48 hours. If the threshold is not reached, the PR is automatically expired.
 
 ---
 
@@ -363,7 +371,7 @@ In your repository Issues → Labels, create:
 | No code injection from PR | `pull_request_target` runs `main` branch code; the PR head branch is never checked out or executed |
 | No shell injection from PR body | PR body is parsed as plain text by Python, never interpolated into shell commands |
 | Signature forgery | Ed25519 signatures are verified against the registered public key for each sender |
-| Sybil validators | Contribution score required; new accounts start at 0 |
+| Sybil validators | Public key registration required; key must be merged into main via consensus |
 
 ---
 
@@ -372,26 +380,27 @@ In your repository Issues → Labels, create:
 ```
 .github/
 ├── workflows/
-│   ├── validate-tx.yml        pull_request_target → verify TX structure + Ed25519 sig
-│   ├── assign-validators.yml  pull_request_target (labeled) → @mention selected validators
-│   ├── consensus-check.yml    issue_comment → count /approve from active validators
+│   ├── validate-tx.yml        pull_request_target → verify TX sig; on success posts validator
+│   │                          vote comment inline (no separate assign-validators trigger needed)
+│   │                          non-TX PRs get immediate success on both required checks
+│   ├── consensus-check.yml    issue_comment → count /approve from pubkeys.json validators
 │   ├── expire-tx.yml          schedule (6h) → close PRs past 48h deadline
-│   └── update-pages.yml       push to main → rebuild ledger.json + deploy Pages
+│   └── update-pages.yml       push to main (utxo/** or validators/**) → rebuild + deploy Pages
 └── scripts/
     ├── validate_tx.py          Core validation logic (TRANSFER + REGISTER_KEY)
-    ├── update_ledger.py        UTXO scanner and ledger.json builder
+    ├── update_ledger.py        UTXO scanner → ledger.json with balances, TX history, validators
     ├── generate_keypair.py     User tool: generate Ed25519 keypair
-    └── create_transaction.py   User tool: build and sign a transaction
+    └── create_transaction.py   User tool: build, sign, write files, git rm inputs automatically
 
 utxo/                          One JSON file per unspent coin
 validators/
-    registry.json              Active validators and contribution scores
-    pubkeys.json               Ed25519 public keys per GitHub username
+    pubkeys.json               Ed25519 public keys per GitHub username (validator pool)
+    registry.json              Optional scoring metadata (score, last_active)
 genesis/
     genesis.json               Genesis block metadata
 docs/
-    index.html                 Balance explorer (static, served via GitHub Pages)
-    ledger.json                Balance snapshot (rebuilt after every merge to main)
+    index.html                 Explorer UI: Balances / Transactions / Validators tabs
+    ledger.json                Snapshot rebuilt after every merge to main
 ```
 
 ---
