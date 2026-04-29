@@ -40,7 +40,7 @@ def parse_tx_body(body: str) -> dict:
     valid_keys = {
         'TX_VERSION', 'FROM', 'TO', 'AMOUNT', 'INPUT_TXIDS',
         'OUTPUT_TO_TXID', 'OUTPUT_CHANGE_TXID', 'MEMO', 'SIGNATURE',
-        'USERNAME', 'PUBLIC_KEY',
+        'USERNAME', 'PUBLIC_KEY', 'MERKLE_ROOT', 'MERKLE_PROOF',
     }
     for line in body.replace('\r\n', '\n').splitlines():
         line = line.strip()
@@ -73,47 +73,98 @@ def canonical_message(tx: dict) -> str:
     return '\n'.join(lines)
 
 
+def merkle_node(a: str, b: str) -> str:
+    return hashlib.sha256((a + b).encode()).hexdigest()
+
+
+def verify_merkle_proof(txid: str, proof: list, expected_root: str) -> bool:
+    """
+    Walk the proof path from leaf to root and check it matches expected_root.
+    proof: list of {"sibling": hash, "direction": "left"|"right"}
+    """
+    current = hashlib.sha256(txid.encode()).hexdigest()
+    for step in proof:
+        sibling = step['sibling']
+        direction = step['direction']
+        if direction == 'right':
+            current = merkle_node(current, sibling)
+        else:
+            current = merkle_node(sibling, current)
+    return current == expected_root
+
+
 def verify_chain(tx: dict, head_content: dict):
     """
-    Full chain validation for TRANSFER transactions.
+    Full chain validation for TRANSFER transactions using Merkle inclusion proofs.
 
     Chain integrity rules:
-      1. Each input UTXO's txid must equal sha256(owner + amount + created_at_block).
-         This proves the file was not tampered with and is genuinely derived from a
-         previous transaction.
-      2. tx_nonce = sha256(FROM + TO + AMOUNT + sorted(INPUT_TXIDS)).
-         Output txids must be derived as:
-           OUTPUT_TO_TXID     = sha256(TO    + AMOUNT        + tx_nonce)
-           OUTPUT_CHANGE_TXID = sha256(FROM  + change_amount + tx_nonce + "change")
-         This proves the output UTXOs are cryptographically bound to the stated inputs.
-      3. Each output UTXO file's created_at_block must equal tx_nonce.
+      1. PR body must include MERKLE_ROOT and MERKLE_PROOF fields.
+      2. MERKLE_ROOT must match the root stored in docs/ledger.json on main branch.
+         This ensures the proof was built against the canonical UTXO set.
+      3. Each input UTXO txid must have a valid Merkle inclusion proof that resolves
+         to MERKLE_ROOT. This proves each input existed in the committed UTXO set
+         without scanning the entire set (O(log n) per input).
+      4. Output txids must be derived from tx_nonce = sha256(FROM+TO+AMOUNT+sorted_inputs).
+         This prevents forged output txids.
+      5. Output UTXO files' created_at_block must equal tx_nonce.
     """
+    # --- Rule 1: proof fields present ---
+    merkle_root_claimed = tx.get('MERKLE_ROOT', '').strip()
+    merkle_proof_str = tx.get('MERKLE_PROOF', '').strip()
+    if not merkle_root_claimed:
+        fail("Missing MERKLE_ROOT field. Regenerate the transaction with the latest create_transaction.py.")
+    if not merkle_proof_str:
+        fail("Missing MERKLE_PROOF field. Regenerate the transaction with the latest create_transaction.py.")
+
+    # --- Rule 2: MERKLE_ROOT matches ledger.json ---
+    ledger_path = Path('docs/ledger.json')
+    if ledger_path.exists():
+        try:
+            ledger = json.loads(ledger_path.read_text())
+            canonical_root = ledger.get('merkle_root', '')
+            if canonical_root and canonical_root != merkle_root_claimed:
+                fail(
+                    f"MERKLE_ROOT '{merkle_root_claimed[:16]}...' does not match "
+                    f"the canonical root '{canonical_root[:16]}...' in ledger.json. "
+                    f"Another transaction may have been merged since your proof was generated. "
+                    f"Please rerun create_transaction.py to get a fresh proof."
+                )
+        except (json.JSONDecodeError, ValueError):
+            pass  # ledger.json not yet generated, skip root check
+
+    # --- Rule 3: Merkle inclusion proof per input ---
+    try:
+        proofs = json.loads(merkle_proof_str)
+    except (json.JSONDecodeError, ValueError):
+        fail("MERKLE_PROOF is not valid JSON. Regenerate with create_transaction.py.")
+
     input_txids_sorted = sorted(t.strip() for t in tx['INPUT_TXIDS'].split(',') if t.strip())
+    for txid in input_txids_sorted:
+        proof = proofs.get(txid)
+        if proof is None:
+            fail(f"MERKLE_PROOF missing entry for input txid '{txid[:16]}...'. Regenerate with create_transaction.py.")
+        if not isinstance(proof, list):
+            fail(f"MERKLE_PROOF entry for '{txid[:16]}...' is not a list.")
+        if not verify_merkle_proof(txid, proof, merkle_root_claimed):
+            fail(
+                f"Merkle inclusion proof FAILED for input txid '{txid[:16]}...'. "
+                f"The UTXO does not exist in the committed UTXO set, or the proof is invalid."
+            )
+
+    # --- Rule 4: output txid derivation ---
     amount = int(tx['AMOUNT'])
 
-    # --- Rule 1: input UTXO txid integrity ---
+    # Compute input_total from main branch for change amount check
     input_total = 0
     for txid in input_txids_sorted:
         utxo_path = Path(f"utxo/{txid}.json")
-        if not utxo_path.exists():
-            continue  # already caught by validate_transfer
-        try:
-            utxo = json.loads(utxo_path.read_text())
-        except json.JSONDecodeError:
-            continue
-        owner = utxo.get('owner', '')
-        utxo_amount = int(utxo.get('amount', 0))
-        created_at_block = utxo.get('created_at_block', '')
-        expected_txid = hashlib.sha256(f"{owner}{utxo_amount}{created_at_block}".encode()).hexdigest()
-        if expected_txid != txid:
-            fail(
-                f"Chain integrity failure: input UTXO '{txid}' txid does not match "
-                f"sha256(owner+amount+created_at_block)='{expected_txid}'. "
-                f"The UTXO file was tampered with or was not created by create_transaction.py."
-            )
-        input_total += utxo_amount
+        if utxo_path.exists():
+            try:
+                utxo = json.loads(utxo_path.read_text())
+                input_total += int(utxo.get('amount', 0))
+            except (json.JSONDecodeError, ValueError):
+                pass
 
-    # --- Rule 2: output txid derivation ---
     tx_seed = f"{tx['FROM']}{tx['TO']}{amount}{','.join(input_txids_sorted)}"
     tx_nonce = hashlib.sha256(tx_seed.encode()).hexdigest()
 
@@ -122,11 +173,10 @@ def verify_chain(tx: dict, head_content: dict):
         fail(
             f"Chain integrity failure: OUTPUT_TO_TXID '{tx['OUTPUT_TO_TXID']}' "
             f"is not correctly derived from transaction inputs "
-            f"(expected '{expected_to_txid}'). "
-            f"Use create_transaction.py to generate a valid transaction."
+            f"(expected '{expected_to_txid}'). Use create_transaction.py."
         )
 
-    if tx.get('OUTPUT_CHANGE_TXID'):
+    if tx.get('OUTPUT_CHANGE_TXID') and input_total > 0:
         change_amount = input_total - amount
         expected_change_txid = hashlib.sha256(
             f"{tx['FROM']}{change_amount}{tx_nonce}change".encode()
@@ -134,24 +184,22 @@ def verify_chain(tx: dict, head_content: dict):
         if tx['OUTPUT_CHANGE_TXID'] != expected_change_txid:
             fail(
                 f"Chain integrity failure: OUTPUT_CHANGE_TXID '{tx['OUTPUT_CHANGE_TXID']}' "
-                f"is not correctly derived (expected '{expected_change_txid}'). "
-                f"Use create_transaction.py to generate a valid transaction."
+                f"is not correctly derived (expected '{expected_change_txid}'). Use create_transaction.py."
             )
 
-    # --- Rule 3: output UTXO created_at_block == tx_nonce ---
+    # --- Rule 5: output UTXO created_at_block == tx_nonce ---
     for filename, content in head_content.items():
         if not filename.startswith('utxo/'):
             continue
         try:
             utxo = json.loads(content)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError):
             continue
         if utxo.get('created_at_block') != tx_nonce:
             fail(
                 f"Chain integrity failure: output UTXO '{filename}' "
                 f"created_at_block '{utxo.get('created_at_block')}' "
-                f"does not match tx_nonce '{tx_nonce}'. "
-                f"Use create_transaction.py to generate output UTXO files."
+                f"does not match tx_nonce '{tx_nonce}'. Use create_transaction.py."
             )
 
 

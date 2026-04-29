@@ -86,6 +86,54 @@ def get_tx_history() -> list:
     return txs
 
 
+def build_merkle_tree(leaves: list[str]) -> tuple[str, list[list[str]]]:
+    """
+    Build a Merkle tree from a sorted list of UTXO txids (leaves).
+    Returns (root_hash, tree_levels) where tree_levels[0] is the leaf level.
+    Each node = sha256(left + right). Odd nodes are duplicated (Bitcoin-style).
+    """
+    if not leaves:
+        empty = hashlib.sha256(b'').hexdigest()
+        return empty, [[empty]]
+
+    import hashlib as _h
+
+    def node(a: str, b: str) -> str:
+        return _h.sha256((a + b).encode()).hexdigest()
+
+    level = [_h.sha256(leaf.encode()).hexdigest() for leaf in leaves]
+    levels = [level]
+    while len(level) > 1:
+        if len(level) % 2 == 1:
+            level = level + [level[-1]]  # duplicate last node
+        level = [node(level[i], level[i + 1]) for i in range(0, len(level), 2)]
+        levels.append(level)
+    return levels[-1][0], levels
+
+
+def get_merkle_root() -> tuple[str, list[str]]:
+    """
+    Compute Merkle root of all UTXO txids currently on disk.
+    Returns (root, sorted_txid_list).
+    """
+    import hashlib
+    utxo_dir = Path('utxo')
+    txids = []
+    for f in sorted(utxo_dir.glob('*.json')):
+        if f.name == '.gitkeep':
+            continue
+        try:
+            utxo = json.loads(f.read_text())
+            txid = utxo.get('txid', '').strip()
+            if txid:
+                txids.append(txid)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    txids_sorted = sorted(txids)
+    root, _ = build_merkle_tree(txids_sorted)
+    return root, txids_sorted
+
+
 def get_validators() -> list:
     pubkeys_path = Path('validators/pubkeys.json')
     pubkeys: dict = {}
@@ -123,6 +171,7 @@ def main():
     balances, utxo_count = scan_utxos()
     txs = get_tx_history()
     validators = get_validators()
+    merkle_root, utxo_txids = get_merkle_root()
 
     ledger = {
         "block_height": block_height,
@@ -132,7 +181,9 @@ def main():
         "balances": balances,
         "utxo_count": utxo_count,
         "transactions": txs,
-        "validators": validators
+        "validators": validators,
+        "merkle_root": merkle_root,
+        "utxo_txids": utxo_txids
     }
 
     docs_dir = Path('docs')
@@ -142,7 +193,7 @@ def main():
     total_supply = sum(balances.values())
     print(f"Ledger updated: block={block_height}, utxos={utxo_count}, "
           f"accounts={len(balances)}, txs={len(txs)}, validators={len(validators)}, "
-          f"supply={total_supply} GTC")
+          f"supply={total_supply} GTC, merkle_root={merkle_root[:12]}...")
 
 
 if __name__ == '__main__':

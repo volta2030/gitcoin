@@ -44,6 +44,75 @@ def b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(s)
 
 
+def merkle_node(a: str, b: str) -> str:
+    return hashlib.sha256((a + b).encode()).hexdigest()
+
+
+def build_merkle_tree(leaves: list) -> list:
+    """Returns tree as list of levels, level[0] = leaf hashes."""
+    if not leaves:
+        return [[hashlib.sha256(b'').hexdigest()]]
+    level = [hashlib.sha256(leaf.encode()).hexdigest() for leaf in leaves]
+    levels = [level]
+    while len(level) > 1:
+        if len(level) % 2 == 1:
+            level = level + [level[-1]]
+        level = [merkle_node(level[i], level[i + 1]) for i in range(0, len(level), 2)]
+        levels.append(level)
+    return levels
+
+
+def merkle_proof(txid: str, txids_sorted: list) -> list:
+    """
+    Compute Merkle inclusion proof for txid.
+    Returns list of {"sibling": hash, "direction": "left"|"right"} dicts.
+    """
+    levels = build_merkle_tree(txids_sorted)
+    leaf_hash = hashlib.sha256(txid.encode()).hexdigest()
+
+    proof = []
+    current = leaf_hash
+    for level in levels[:-1]:  # skip root level
+        padded = level + [level[-1]] if len(level) % 2 == 1 else level
+        idx = padded.index(current)
+        if idx % 2 == 0:
+            sibling = padded[idx + 1]
+            direction = "right"
+        else:
+            sibling = padded[idx - 1]
+            direction = "left"
+        proof.append({"sibling": sibling, "direction": direction})
+        current = merkle_node(padded[idx], sibling) if direction == "right" else merkle_node(sibling, padded[idx])
+    return proof
+
+
+def fetch_ledger() -> dict:
+    """Fetch ledger.json from GitHub Pages to get current merkle_root and utxo_txids."""
+    import urllib.request
+    url = "https://volta2030.github.io/gitcoin/ledger.json"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"Warning: Could not fetch ledger.json from Pages ({e}). Falling back to local utxo/ scan.")
+        return {}
+
+
+def get_utxo_txids_from_local() -> list:
+    """Fallback: build sorted txid list from local utxo/ directory."""
+    utxo_dir = Path('utxo')
+    txids = []
+    for f in sorted(utxo_dir.glob('*.json')):
+        try:
+            utxo = json.loads(f.read_text())
+            txid = utxo.get('txid', '').strip()
+            if txid:
+                txids.append(txid)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return sorted(txids)
+
+
 def make_txid(owner: str, amount: int, block_hash: str) -> str:
     data = f"{owner}{amount}{block_hash}"
     return hashlib.sha256(data.encode()).hexdigest()
@@ -206,6 +275,34 @@ def main():
     signature_b64 = base64.urlsafe_b64encode(signature_bytes).decode().rstrip('=')
     tx['SIGNATURE'] = signature_b64
 
+    # Compute Merkle inclusion proof for each input UTXO
+    print("\nFetching current UTXO Merkle root...")
+    ledger = fetch_ledger()
+    if ledger.get('utxo_txids') and ledger.get('merkle_root'):
+        utxo_txids_sorted = ledger['utxo_txids']
+        merkle_root = ledger['merkle_root']
+        source = "ledger.json (Pages)"
+    else:
+        utxo_txids_sorted = get_utxo_txids_from_local()
+        from update_ledger import build_merkle_tree as _bmt
+        root_level = _bmt(utxo_txids_sorted)
+        merkle_root = root_level[-1][0] if root_level else hashlib.sha256(b'').hexdigest()
+        source = "local utxo/ scan"
+
+    print(f"  Merkle root: {merkle_root[:16]}... (source: {source})")
+
+    proofs = {}
+    for txid in input_txids:
+        if txid not in utxo_txids_sorted:
+            print(f"  WARNING: txid {txid[:16]}... not found in UTXO set from {source}.")
+            print("           The ledger.json may be stale. Run update-pages workflow first.")
+            proofs[txid] = []
+        else:
+            proofs[txid] = merkle_proof(txid, utxo_txids_sorted)
+
+    # Encode proofs as compact JSON string for PR body
+    proof_json = json.dumps(proofs, separators=(',', ':'))
+
     # Build output UTXO JSON files
     # Note: created_at_block is set to the nonce placeholder; the real block hash
     # will differ after merge. The validator checks amounts/owners, not the block hash.
@@ -246,6 +343,8 @@ def main():
     if memo:
         pr_body_lines.append(f"MEMO: {tx['MEMO']}")
     pr_body_lines.append(f"SIGNATURE: {signature_b64}")
+    pr_body_lines.append(f"MERKLE_ROOT: {merkle_root}")
+    pr_body_lines.append(f"MERKLE_PROOF: {proof_json}")
     print('\n'.join(pr_body_lines))
 
     print()
