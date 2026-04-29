@@ -66,6 +66,19 @@ def canonical_message(tx: dict) -> str:
     return '\n'.join(lines)
 
 
+def list_owned_utxos(owner: str) -> list:
+    utxo_dir = Path('utxo')
+    owned = []
+    for f in sorted(utxo_dir.glob('*.json')):
+        try:
+            utxo = json.loads(f.read_text())
+            if utxo.get('owner') == owner:
+                owned.append(utxo)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return owned
+
+
 def main():
     print("=" * 60)
     print("GitCoin Transaction Builder")
@@ -73,10 +86,51 @@ def main():
     print()
 
     from_user = input("Your GitHub username: ").strip()
+
+    # Show owned UTXOs
+    owned = list_owned_utxos(from_user)
+    if not owned:
+        print(f"\nERROR: No UTXOs found for '{from_user}' in utxo/")
+        print("Make sure you are on the latest main branch (git pull origin main)")
+        sys.exit(1)
+
+    total_balance = sum(int(u.get('amount', 0)) for u in owned)
+    print(f"\nYour UTXOs ({len(owned)} total, {total_balance:,} GTC):")
+    print(f"  {'#':<4} {'txid':<20}  {'amount':>18}")
+    print(f"  {'-'*4} {'-'*20}  {'-'*18}")
+    for i, u in enumerate(owned, 1):
+        txid_short = u['txid'][:16] + '...'
+        print(f"  {i:<4} {txid_short:<20}  {int(u.get('amount',0)):>16,} GTC")
+    print()
+
     private_key_b64 = input("Your private key (base64url): ").strip()
     to_user = input("Recipient GitHub username: ").strip()
     amount_str = input("Amount to send (GTC): ").strip()
-    input_txids_str = input("UTXO txids to spend (comma-separated): ").strip()
+
+    # Smart UTXO selection prompt
+    if len(owned) == 1:
+        default_txid = owned[0]['txid']
+        input_txids_str = input(f"UTXO txids to spend [Enter for #{1}: {default_txid[:16]}...]: ").strip()
+        if not input_txids_str:
+            input_txids_str = default_txid
+    else:
+        print("Enter txid numbers (e.g. 1  or  1,2) or full txids:")
+        input_txids_str = input("UTXO txids to spend: ").strip()
+        # Allow number shortcuts like "1" or "1,2"
+        resolved = []
+        for part in input_txids_str.split(','):
+            part = part.strip()
+            if part.isdigit():
+                idx = int(part) - 1
+                if 0 <= idx < len(owned):
+                    resolved.append(owned[idx]['txid'])
+                else:
+                    print(f"ERROR: No UTXO #{part}")
+                    sys.exit(1)
+            else:
+                resolved.append(part)
+        input_txids_str = ','.join(resolved)
+
     memo = input("Memo (optional, press Enter to skip): ").strip()
 
     try:
