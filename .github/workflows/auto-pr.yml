@@ -1,0 +1,49 @@
+name: Auto Create TX PR
+
+on:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    # Only run for commits whose message starts with "tx:"
+    if: startsWith(github.event.head_commit.message, 'tx:')
+    steps:
+      - name: Create PR if not already open
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+
+          # Check if a PR already exists for this branch targeting main
+          existing=$(gh pr list \
+            --repo "$REPO" \
+            --head "$BRANCH" \
+            --base main \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -n "$existing" ]; then
+            echo "PR already exists: #$existing — skipping"
+            exit 0
+          fi
+
+          # First line = title, everything after blank line = body
+          TITLE=$(printf '%s' "$COMMIT_MSG" | head -1)
+          BODY=$(printf '%s' "$COMMIT_MSG" | tail -n +3)
+
+          gh pr create \
+            --repo "$REPO" \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --base main \
+            --head "$BRANCH"
+
+          echo "PR created: $TITLE"
