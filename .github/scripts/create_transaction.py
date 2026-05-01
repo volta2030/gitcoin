@@ -387,12 +387,19 @@ def main():
         else:
             print(f"  WARNING: git rm failed for utxo/{txid}.json: {r.stderr.strip()}")
 
+    # Write multi-line commit message to .git/ (not tracked)
+    commit_title = f"tx: {from_user} \u2192 {to_user} {amount} GTC"
+    commit_msg = commit_title + "\n\n" + "\n".join(pr_body_lines)
+    msg_file = Path(".git/GITCOIN_TX_MSG")
+    msg_file.write_text(commit_msg, encoding="utf-8")
+    print(f"  Written: .git/GITCOIN_TX_MSG  (commit message with TX body)")
+
     print()
     print("Now run:")
     print(f"  git add utxo/")
-    print(f'  git commit -m "tx: {from_user} → {to_user} {amount} GTC"')
+    print(f'  git commit -F .git/GITCOIN_TX_MSG')
     print(f"  git push")
-    print("Then open a PR to the main repo's main branch.")
+    print("A PR to main will be created automatically after push.")
 
 
 if __name__ == '__main__':
