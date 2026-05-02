@@ -161,18 +161,34 @@ The script will:
 
 ### Step 3 — Commit and push
 
+The script writes `.git/GITCOIN_TX_MSG` with the full TX body as the commit message. Use it directly:
+
 ```bash
 git add utxo/
-git commit -m "tx: YOUR_USERNAME → RECIPIENT 50 GTC"
+git commit -F .git/GITCOIN_TX_MSG
 git push origin <new-branch-name>
 ```
 
-### Step 4 — Open a PR
+### Step 4 — Open a PR (automatic)
 
-Open a Pull Request to **this repository's `main` branch**.
+After `git push`, the script will ask:
 
-- **PR title**: `tx: YOUR_USERNAME → RECIPIENT 50 GTC`
-- **PR body**: paste the full block from the script output (includes `MERKLE_ROOT` and `MERKLE_PROOF`)
+```
+Auto-create PR now? (requires GH_TOKEN env var) [Y/n]:
+```
+
+- **With `GH_TOKEN`**: the PR is created automatically — works from forks too.
+- **Without `GH_TOKEN`**: open the PR manually at `https://github.com/volta2030/gitcoin/compare`
+
+To set `GH_TOKEN` once (create a PAT with `repo` scope at https://github.com/settings/tokens):
+
+```bash
+# Linux/macOS
+export GH_TOKEN=ghp_yourtoken
+
+# Windows PowerShell
+$env:GH_TOKEN = "ghp_yourtoken"
+```
 
 ### Step 5 — Wait for consensus
 
@@ -322,20 +338,34 @@ The script outputs the exact PR body to copy and the file changes to make. It ca
 
 ### Step 4 — Commit and push the changes
 
-The script does `git rm` on input UTXOs and writes output files automatically. Just run:
+The script writes `.git/GITCOIN_TX_MSG` with the full TX body as the commit message:
 
 ```bash
 git add utxo/
-git commit -m "tx: YOUR_USERNAME → RECIPIENT 50 GTC"
+git commit -F .git/GITCOIN_TX_MSG
 git push origin <new-branch-name>
 ```
 
-### Step 5 — Open a PR
+### Step 5 — Open a PR (automatic)
 
-Open a Pull Request to **this repository's `main` branch**.
+After `git push`, the script asks:
 
-- **PR title**: `tx: YOUR_USERNAME → RECIPIENT 50 GTC`
-- **PR body**: paste the `TX_VERSION: 1 ...` block from the script output
+```
+Auto-create PR now? (requires GH_TOKEN env var) [Y/n]:
+```
+
+- **With `GH_TOKEN`**: PR is created automatically — works from forks too.
+- **Without `GH_TOKEN`**: open manually at `https://github.com/volta2030/gitcoin/compare`
+
+To set `GH_TOKEN` once (create a PAT with `repo` scope at https://github.com/settings/tokens):
+
+```bash
+# Linux/macOS
+export GH_TOKEN=ghp_yourtoken
+
+# Windows PowerShell
+$env:GH_TOKEN = "ghp_yourtoken"
+```
 
 ### Step 6 — Wait for consensus
 

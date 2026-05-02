@@ -399,7 +399,67 @@ def main():
     print(f"  git add utxo/")
     print(f'  git commit -F .git/GITCOIN_TX_MSG')
     print(f"  git push")
-    print("A PR to main will be created automatically after push.")
+
+    # Auto-create PR using GH_TOKEN if available
+    auto_pr = input("\nAuto-create PR now? (requires GH_TOKEN env var) [Y/n]: ").strip().lower()
+    if auto_pr in ('', 'y', 'yes'):
+        _auto_create_pr(from_user, to_user, amount, pr_body_lines)
+
+
+def _auto_create_pr(from_user: str, to_user: str, amount: int, pr_body_lines: list):
+    import os
+    token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
+    if not token:
+        print("\nERROR: GH_TOKEN environment variable not set.")
+        print("Set it with:  export GH_TOKEN=ghp_yourtoken")
+        print("Then open the PR manually at:")
+        print("  https://github.com/volta2030/gitcoin/compare")
+        return
+
+    # Detect upstream remote URL to determine repo
+    r = subprocess.run(['git', 'remote', '-v'], capture_output=True, text=True)
+    upstream_repo = 'volta2030/gitcoin'
+    for line in r.stdout.splitlines():
+        if 'volta2030/gitcoin' in line and '(push)' in line:
+            upstream_repo = 'volta2030/gitcoin'
+            break
+
+    # Get current branch
+    r = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+                       capture_output=True, text=True)
+    branch = r.stdout.strip()
+
+    # Get current remote (fork or origin)
+    r = subprocess.run(['git', 'remote', 'get-url', 'origin'],
+                       capture_output=True, text=True)
+    origin_url = r.stdout.strip()
+    # Extract owner/repo from origin URL
+    import re
+    m = re.search(r'github\.com[:/](.+?)(?:\.git)?$', origin_url)
+    head_ref = f"{m.group(1).split('/')[0]}:{branch}" if m else branch
+
+    title = f"tx: {from_user} \u2192 {to_user} {amount} GTC"
+    body = '\n'.join(pr_body_lines)
+
+    env = {**__import__('os').environ, 'GH_TOKEN': token}
+    result = subprocess.run([
+        'gh', 'pr', 'create',
+        '--repo', upstream_repo,
+        '--title', title,
+        '--body', body,
+        '--base', 'main',
+        '--head', head_ref,
+    ], capture_output=True, text=True, env=env)
+
+    if result.returncode == 0:
+        print(f"\nPR created: {result.stdout.strip()}")
+    else:
+        err = result.stderr.strip()
+        if 'already exists' in err:
+            print(f"\nPR already exists for branch '{branch}'.")
+        else:
+            print(f"\nERROR creating PR: {err}")
+            print("Open manually at: https://github.com/volta2030/gitcoin/compare")
 
 
 if __name__ == '__main__':
