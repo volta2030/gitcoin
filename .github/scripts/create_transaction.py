@@ -24,6 +24,7 @@ The script reads input UTXO files from the local utxo/ directory
 import base64
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -476,6 +477,14 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
     body = '\n'.join(pr_body_lines)
     env = {**os.environ, 'GH_TOKEN': token}
 
+    manual_url = f"https://github.com/gitledger/gitcoin/compare/main...{head_ref}?expand=1"
+
+    if not shutil.which('gh'):
+        print(f"\nWARNING: GitHub CLI (gh) not found in PATH.")
+        print(f"Branch '{branch}' has been pushed. Open PR manually at:")
+        print(f"  {manual_url}")
+        return
+
     print(f"\n  gh pr create ...")
     result = subprocess.run([
         'gh', 'pr', 'create',
@@ -494,7 +503,7 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
             print(f"\nPR already exists for branch '{branch}'.")
         else:
             print(f"\nERROR creating PR: {err}")
-            print("Open manually at: https://github.com/gitledger/gitcoin/compare")
+            print(f"Open manually at: {manual_url}")
 
 
 if __name__ == '__main__':
