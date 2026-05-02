@@ -3,7 +3,7 @@
 A fully decentralized token ecosystem that runs entirely on GitHub.
 No servers, no wallets, no gas fees — just forks, pull requests, and consensus.
 
-**Live Balance Explorer**: https://volta2030.github.io/gitcoin/ — Balances, Transactions, Validators tabs
+**Live Balance Explorer**: https://gitledger.github.io/gitcoin/ — Balances, Transactions, Validators tabs
 
 ---
 
@@ -177,18 +177,17 @@ After `git push`, the script will ask:
 Auto-create PR now? (requires GH_TOKEN env var) [Y/n]:
 ```
 
-- **With `GH_TOKEN`**: the PR is created automatically — works from forks too.
-- **Without `GH_TOKEN`**: open the PR manually at `https://github.com/volta2030/gitcoin/compare`
+- **With token**: PR is created automatically — works from forks too.
+- **Without token**: open the PR manually at `https://github.com/gitledger/gitcoin/compare`
 
-To set `GH_TOKEN` once (create a PAT with `repo` scope at https://github.com/settings/tokens):
+To enable auto-PR, create a `GH_TOKEN.txt` file in the repo root with your PAT  
+(create a PAT with `repo` scope at https://github.com/settings/tokens):
 
 ```bash
-# Linux/macOS
-export GH_TOKEN=ghp_yourtoken
-
-# Windows PowerShell
-$env:GH_TOKEN = "ghp_yourtoken"
+echo ghp_yourtoken > GH_TOKEN.txt
 ```
+
+`GH_TOKEN.txt` is listed in `.gitignore` and will **never be committed**.
 
 ### Step 5 — Wait for consensus
 
@@ -354,18 +353,17 @@ After `git push`, the script asks:
 Auto-create PR now? (requires GH_TOKEN env var) [Y/n]:
 ```
 
-- **With `GH_TOKEN`**: PR is created automatically — works from forks too.
-- **Without `GH_TOKEN`**: open manually at `https://github.com/volta2030/gitcoin/compare`
+- **With token**: PR is created automatically — works from forks too.
+- **Without token**: open manually at `https://github.com/gitledger/gitcoin/compare`
 
-To set `GH_TOKEN` once (create a PAT with `repo` scope at https://github.com/settings/tokens):
+To enable auto-PR, create a `GH_TOKEN.txt` file in the repo root with your PAT  
+(create a PAT with `repo` scope at https://github.com/settings/tokens):
 
 ```bash
-# Linux/macOS
-export GH_TOKEN=ghp_yourtoken
-
-# Windows PowerShell
-$env:GH_TOKEN = "ghp_yourtoken"
+echo ghp_yourtoken > GH_TOKEN.txt
 ```
+
+`GH_TOKEN.txt` is listed in `.gitignore` and will **never be committed**.
 
 ### Step 6 — Wait for consensus
 

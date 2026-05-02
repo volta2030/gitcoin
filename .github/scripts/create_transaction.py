@@ -89,7 +89,7 @@ def merkle_proof(txid: str, txids_sorted: list) -> list:
 def fetch_ledger() -> dict:
     """Fetch ledger.json from GitHub Pages to get current merkle_root and utxo_txids."""
     import urllib.request
-    url = "https://volta2030.github.io/gitcoin/ledger.json"
+    url = "https://gitledger.github.io/gitcoin/ledger.json"
     try:
         with urllib.request.urlopen(url, timeout=10) as resp:
             return json.loads(resp.read().decode())
@@ -401,47 +401,82 @@ def main():
     print(f"  git push")
 
     # Auto-create PR using GH_TOKEN if available
-    auto_pr = input("\nAuto-create PR now? (requires GH_TOKEN env var) [Y/n]: ").strip().lower()
+    auto_pr = input("\nAuto commit, push and create PR? (requires GH_TOKEN or GH_TOKEN.txt) [Y/n]: ").strip().lower()
     if auto_pr in ('', 'y', 'yes'):
-        _auto_create_pr(from_user, to_user, amount, pr_body_lines)
+        _auto_commit_push_pr(from_user, to_user, amount, pr_body_lines)
 
 
-def _auto_create_pr(from_user: str, to_user: str, amount: int, pr_body_lines: list):
-    import os
+def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_lines: list):
+    import os, re
+
+    # --- Resolve token ---
     token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
     if not token:
-        print("\nERROR: GH_TOKEN environment variable not set.")
-        print("Set it with:  export GH_TOKEN=ghp_yourtoken")
-        print("Then open the PR manually at:")
-        print("  https://github.com/volta2030/gitcoin/compare")
+        token_file = Path('GH_TOKEN.txt')
+        if token_file.exists():
+            token = token_file.read_text(encoding='utf-8').strip()
+    if not token:
+        print("\nERROR: GitHub token not found.")
+        print("Create GH_TOKEN.txt in the repo root with your PAT:")
+        print("  echo ghp_yourtoken > GH_TOKEN.txt")
+        print("(GH_TOKEN.txt is in .gitignore and will never be committed)")
         return
 
-    # Detect upstream remote URL to determine repo
-    r = subprocess.run(['git', 'remote', '-v'], capture_output=True, text=True)
-    upstream_repo = 'volta2030/gitcoin'
-    for line in r.stdout.splitlines():
-        if 'volta2030/gitcoin' in line and '(push)' in line:
-            upstream_repo = 'volta2030/gitcoin'
-            break
+    # --- Branch name ---
+    suggested = f"tx-{from_user[:8]}"
+    branch_input = input(f"Branch name [{suggested}]: ").strip()
+    branch = branch_input if branch_input else suggested
 
-    # Get current branch
-    r = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
-                       capture_output=True, text=True)
-    branch = r.stdout.strip()
+    # --- git add ---
+    print(f"\n  git add utxo/")
+    r = subprocess.run(['git', 'add', 'utxo/'], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"ERROR: git add failed: {r.stderr.strip()}")
+        return
 
-    # Get current remote (fork or origin)
-    r = subprocess.run(['git', 'remote', 'get-url', 'origin'],
-                       capture_output=True, text=True)
+    # --- git checkout -b <branch> (create new branch) ---
+    current = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+                             capture_output=True, text=True).stdout.strip()
+    if current != branch:
+        print(f"  git switch -c {branch}")
+        r = subprocess.run(['git', 'switch', '-c', branch], capture_output=True, text=True)
+        if r.returncode != 0:
+            # branch may already exist
+            r = subprocess.run(['git', 'switch', branch], capture_output=True, text=True)
+            if r.returncode != 0:
+                print(f"ERROR: git switch failed: {r.stderr.strip()}")
+                return
+
+    # --- git commit ---
+    msg_file = Path('.git/GITCOIN_TX_MSG')
+    print(f"  git commit -F .git/GITCOIN_TX_MSG")
+    r = subprocess.run(['git', 'commit', '-F', str(msg_file)], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"ERROR: git commit failed: {r.stderr.strip()}")
+        return
+    print(f"  {r.stdout.strip()}")
+
+    # --- git push ---
+    print(f"  git push origin {branch}")
+    r = subprocess.run(['git', 'push', 'origin', branch], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"ERROR: git push failed: {r.stderr.strip()}")
+        return
+
+    # --- Determine head ref for fork support ---
+    r = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True)
     origin_url = r.stdout.strip()
-    # Extract owner/repo from origin URL
-    import re
     m = re.search(r'github\.com[:/](.+?)(?:\.git)?$', origin_url)
-    head_ref = f"{m.group(1).split('/')[0]}:{branch}" if m else branch
+    owner = m.group(1).split('/')[0] if m else None
+    upstream_repo = 'gitledger/gitcoin'
+    head_ref = f"{owner}:{branch}" if owner and owner != 'volta2030' else branch
 
+    # --- gh pr create ---
     title = f"tx: {from_user} \u2192 {to_user} {amount} GTC"
     body = '\n'.join(pr_body_lines)
+    env = {**os.environ, 'GH_TOKEN': token}
 
-    env = {**__import__('os').environ, 'GH_TOKEN': token}
+    print(f"\n  gh pr create ...")
     result = subprocess.run([
         'gh', 'pr', 'create',
         '--repo', upstream_repo,
@@ -459,7 +494,7 @@ def _auto_create_pr(from_user: str, to_user: str, amount: int, pr_body_lines: li
             print(f"\nPR already exists for branch '{branch}'.")
         else:
             print(f"\nERROR creating PR: {err}")
-            print("Open manually at: https://github.com/volta2030/gitcoin/compare")
+            print("Open manually at: https://github.com/gitledger/gitcoin/compare")
 
 
 if __name__ == '__main__':
