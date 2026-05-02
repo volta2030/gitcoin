@@ -52,14 +52,16 @@ jobs:
               print("PR is closed, skipping")
               sys.exit(0)
 
-          # Get PR head SHA
+          # Get PR head SHA and body
           r = subprocess.run(
               ['gh', 'api', f'repos/{repo}/pulls/{pr_number}'],
               capture_output=True, text=True, env=os.environ
           )
           if r.returncode != 0:
               sys.exit(1)
-          head_sha = json.loads(r.stdout)['head']['sha']
+          pr_data = json.loads(r.stdout)
+          head_sha = pr_data['head']['sha']
+          pr_body = pr_data.get('body', '') or ''
 
           def post_status(state, description):
               subprocess.run([
@@ -69,7 +71,7 @@ jobs:
                   '-f', f'description={description[:140]}'
               ], env=os.environ)
 
-          # Anyone in pubkeys.json is a valid validator
+          # Get valid validators from pubkeys.json
           valid_validators = set()
           pubkeys_path = 'validators/pubkeys.json'
           if os.path.exists(pubkeys_path):
@@ -87,16 +89,29 @@ jobs:
               sys.exit(1)
           comments = json.loads(r.stdout)
 
-          # Detect PR type from PR body
-          r_pr = subprocess.run(
-              ['gh', 'api', f'repos/{repo}/pulls/{pr_number}'],
-              capture_output=True, text=True, env=os.environ
-          )
-          pr_body = json.loads(r_pr.stdout).get('body', '') or ''
-          is_register = 'TX_VERSION: REGISTER_KEY' in pr_body
+          # Detect PR type
+          is_tx_transfer = bool(re.search(r'^TX_VERSION:\s*1\s*$', pr_body, re.MULTILINE))
 
-          if is_register:
-              # REGISTER_KEY: any 1 existing validator can /approve
+          if is_tx_transfer:
+              # TX transfer: only the sender (FROM) can approve their own TX
+              m = re.search(r'^FROM:\s*(\S+)', pr_body, re.MULTILINE)
+              from_user = m.group(1).strip() if m else ''
+              if not from_user:
+                  post_status('error', 'Could not determine FROM field in TX body')
+                  sys.exit(0)
+              approved = any(
+                  c.get('user', {}).get('login', '') == from_user and c.get('body', '').strip() == '/approve'
+                  for c in comments
+              )
+              print(f"TX sender approval: {'yes' if approved else 'no'} (waiting for @{from_user})")
+              if approved:
+                  post_status('success', f'TX approved by sender @{from_user}')
+              else:
+                  post_status('pending', f'Waiting for sender @{from_user} to post /approve')
+          else:
+              # Non-TX (code changes, REGISTER_KEY): require ceil(1/3) of all validators
+              total = len(valid_validators)
+              required = math.ceil(total / 3) if total else 1
               approvals = set()
               for c in comments:
                   user = c.get('user', {}).get('login', '')
@@ -104,44 +119,9 @@ jobs:
                   if body == '/approve' and user in valid_validators:
                       approvals.add(user)
               approval_count = len(approvals)
-              print(f"REGISTER_KEY approvals: {approval_count}/1 required (by: {sorted(approvals)})")
-              if approval_count >= 1:
-                  post_status('success', f'Key registration approved by: {sorted(approvals)[0]}')
+              print(f"Non-TX approvals: {approval_count}/{required} required (by: {sorted(approvals)})")
+              if approval_count >= required:
+                  post_status('success', f'Approved: {approval_count}/{total} validators ({required} required)')
               else:
-                  post_status('pending', 'Waiting for 1 validator /approve to register key')
-              sys.exit(0)
-
-          # TRANSFER: find assign-validators comment to get selected list and required count
-          selected_validators = None
-          required = None
-          for c in comments:
-              body = c.get('body', '')
-              m = re.search(r'<!-- GITCOIN_VALIDATORS:([\w,\-]+) -->', body)
-              r_match = re.search(r'<!-- GITCOIN_REQUIRED:(\d+) -->', body)
-              if m and r_match:
-                  selected_validators = set(m.group(1).split(','))
-                  required = int(r_match.group(1))
-                  break
-
-          if selected_validators is None or required is None:
-              post_status('pending', 'Waiting for validator assignment')
-              print("No validator assignment comment found yet")
-              sys.exit(0)
-
-          # Count distinct /approve comments from selected active validators
-          approvals = set()
-          for c in comments:
-              user = c.get('user', {}).get('login', '')
-              body = c.get('body', '').strip()
-              if body == '/approve' and user in selected_validators and user in valid_validators:
-                  approvals.add(user)
-
-          approval_count = len(approvals)
-          total_selected = len(selected_validators)
-          print(f"Approvals: {approval_count}/{required} required (selected: {sorted(approvals)})")
-
-          if approval_count >= required:
-              post_status('success', f'Consensus reached: {approval_count}/{total_selected} validator approvals')
-          else:
-              post_status('pending', f'Waiting for consensus: {approval_count}/{required} approvals needed')
+                  post_status('pending', f'Waiting for consensus: {approval_count}/{required} validator approvals needed')
           EOF
