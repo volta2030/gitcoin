@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Create PR if not already open
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.TX_PAT }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           BRANCH="${{ github.ref_name }}"
