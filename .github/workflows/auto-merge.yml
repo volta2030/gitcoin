@@ -1,0 +1,97 @@
+name: Auto Merge on Consensus
+
+on:
+  status:
+
+permissions:
+  contents: read
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    # Only trigger when consensus-check/passed flips to success
+    if: |
+      github.event.context == 'consensus-check/passed' &&
+      github.event.state == 'success'
+    steps:
+      - name: Find PR and merge
+        env:
+          GH_TOKEN: ${{ secrets.TX_PAT }}
+        run: |
+          python3 - << 'EOF'
+          import json, subprocess, os, sys
+
+          repo = "${{ github.repository }}"
+          sha  = "${{ github.event.sha }}"
+
+          # Find open PRs whose head SHA matches
+          r = subprocess.run(
+              ['gh', 'api', f'repos/{repo}/pulls',
+               '--jq', f'[.[] | select(.head.sha == "{sha}" and .state == "open")]'],
+              capture_output=True, text=True, env=os.environ
+          )
+          if r.returncode != 0:
+              print("ERROR fetching PRs:", r.stderr)
+              sys.exit(1)
+
+          prs = json.loads(r.stdout)
+          if not prs:
+              print(f"No open PR found for SHA {sha[:8]} — skipping")
+              sys.exit(0)
+
+          pr = prs[0]
+          pr_number = pr['number']
+          pr_title  = pr['title']
+          print(f"Found PR #{pr_number}: {pr_title}")
+
+          # Verify all required status checks are passing
+          r = subprocess.run(
+              ['gh', 'api', f'repos/{repo}/commits/{sha}/check-runs',
+               '--jq', '[.check_runs[] | {name: .name, conclusion: .conclusion}]'],
+              capture_output=True, text=True, env=os.environ
+          )
+          checks = json.loads(r.stdout) if r.returncode == 0 else []
+          failed = [c for c in checks if c['conclusion'] not in ('success', 'skipped', None)]
+          if failed:
+              print(f"Some checks not passing yet: {failed} — skipping")
+              sys.exit(0)
+
+          # Also verify validate-tx/validate status
+          r = subprocess.run(
+              ['gh', 'api', f'repos/{repo}/commits/{sha}/statuses',
+               '--jq', '[.[] | {context: .context, state: .state}]'],
+              capture_output=True, text=True, env=os.environ
+          )
+          statuses = json.loads(r.stdout) if r.returncode == 0 else []
+          # Deduplicate: keep latest per context
+          seen = {}
+          for s in statuses:
+              seen[s['context']] = s['state']
+
+          validate_state = seen.get('validate-tx/validate', '')
+          consensus_state = seen.get('consensus-check/passed', '')
+          print(f"  validate-tx/validate : {validate_state}")
+          print(f"  consensus-check/passed: {consensus_state}")
+
+          if validate_state != 'success':
+              print("validate-tx/validate not success yet — skipping")
+              sys.exit(0)
+          if consensus_state != 'success':
+              print("consensus-check/passed not success yet — skipping")
+              sys.exit(0)
+
+          # Merge
+          r = subprocess.run(
+              ['gh', 'pr', 'merge', str(pr_number),
+               '--repo', repo,
+               '--merge',
+               '--subject', pr_title,
+               '--delete-branch'],
+              capture_output=True, text=True, env=os.environ
+          )
+          if r.returncode == 0:
+              print(f"PR #{pr_number} merged successfully.")
+          else:
+              print(f"ERROR merging PR #{pr_number}: {r.stderr}")
+              sys.exit(1)
+          EOF
