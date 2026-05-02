@@ -3,7 +3,7 @@
 A fully decentralized token ecosystem that runs entirely on GitHub.
 No servers, no wallets, no gas fees — just forks, pull requests, and consensus.
 
-**Live Balance Explorer**: https://volta2030.github.io/gitcoin/ — Balances, Transactions, Validators tabs
+**Live Balance Explorer**: https://gitledger.github.io/gitcoin/ — Balances, Transactions, Validators tabs
 
 ---
 
@@ -178,7 +178,7 @@ Auto-create PR now? (requires GH_TOKEN env var) [Y/n]:
 ```
 
 - **With token**: PR is created automatically — works from forks too.
-- **Without token**: open the PR manually at `https://github.com/volta2030/gitcoin/compare`
+- **Without token**: open the PR manually at `https://github.com/gitledger/gitcoin/compare`
 
 To enable auto-PR, create a `GH_TOKEN.txt` file in the repo root with your PAT  
 (create a PAT with `repo` scope at https://github.com/settings/tokens):
@@ -354,7 +354,7 @@ Auto-create PR now? (requires GH_TOKEN env var) [Y/n]:
 ```
 
 - **With token**: PR is created automatically — works from forks too.
-- **Without token**: open manually at `https://github.com/volta2030/gitcoin/compare`
+- **Without token**: open manually at `https://github.com/gitledger/gitcoin/compare`
 
 To enable auto-PR, create a `GH_TOKEN.txt` file in the repo root with your PAT  
 (create a PAT with `repo` scope at https://github.com/settings/tokens):

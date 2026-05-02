@@ -40,7 +40,7 @@
     <a href="balances.html">Balances</a>
     <a href="transactions.html">Transactions</a>
     <a href="validators.html">Validators</a>
-    <a href="https://github.com/volta2030/gitcoin" target="_blank" style="margin-left:auto">GitHub &#8599;</a>
+    <a href="https://github.com/gitledger/gitcoin" target="_blank" style="margin-left:auto">GitHub &#8599;</a>
   </nav>
 
   <h1>GitCoin Explorer</h1>
@@ -74,12 +74,12 @@
   </div>
 
   <footer>
-    Ledger derived from <a href="https://github.com/volta2030/gitcoin/tree/main/utxo" target="_blank"><code>utxo/</code></a> on main &mdash;
-    <a href="https://github.com/volta2030/gitcoin" target="_blank">view source</a>
+    Ledger derived from <a href="https://github.com/gitledger/gitcoin/tree/main/utxo" target="_blank"><code>utxo/</code></a> on main &mdash;
+    <a href="https://github.com/gitledger/gitcoin" target="_blank">view source</a>
   </footer>
 </div>
 <script>
-const REPO='volta2030/gitcoin';
+const REPO='gitledger/gitcoin';
 async function load(){
   let l;
   try{const r=await fetch('./ledger.json?t='+Date.now());if(!r.ok)throw new Error('HTTP '+r.status);l=await r.json()}

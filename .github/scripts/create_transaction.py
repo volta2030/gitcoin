@@ -89,7 +89,7 @@ def merkle_proof(txid: str, txids_sorted: list) -> list:
 def fetch_ledger() -> dict:
     """Fetch ledger.json from GitHub Pages to get current merkle_root and utxo_txids."""
     import urllib.request
-    url = "https://volta2030.github.io/gitcoin/ledger.json"
+    url = "https://gitledger.github.io/gitcoin/ledger.json"
     try:
         with urllib.request.urlopen(url, timeout=10) as resp:
             return json.loads(resp.read().decode())
@@ -468,7 +468,7 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
     origin_url = r.stdout.strip()
     m = re.search(r'github\.com[:/](.+?)(?:\.git)?$', origin_url)
     owner = m.group(1).split('/')[0] if m else None
-    upstream_repo = 'volta2030/gitcoin'
+    upstream_repo = 'gitledger/gitcoin'
     head_ref = f"{owner}:{branch}" if owner and owner != 'volta2030' else branch
 
     # --- gh pr create ---
@@ -494,7 +494,7 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
             print(f"\nPR already exists for branch '{branch}'.")
         else:
             print(f"\nERROR creating PR: {err}")
-            print("Open manually at: https://github.com/volta2030/gitcoin/compare")
+            print("Open manually at: https://github.com/gitledger/gitcoin/compare")
 
 
 if __name__ == '__main__':
