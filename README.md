@@ -83,11 +83,19 @@ You also need:
 
 Click **Fork** at the top of this page. Your fork is your full node — it contains the entire ledger history.
 
-### Step 2 — Generate your Ed25519 identity
+### Step 2 — Clone and set upstream remote
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/gitcoin
 cd gitcoin
+git remote add upstream https://github.com/gitledger/gitcoin.git
+```
+
+`upstream` is required for the auto-PR feature — it tells the script which repo to open the PR against.
+
+### Step 3 — Generate your Ed25519 identity
+
+```bash
 python3 .github/scripts/generate_keypair.py
 ```
 
@@ -102,7 +110,7 @@ Output:
 
 **Store your private key in a password manager.** If you lose it, you lose access to your coins. Never commit it to any repository.
 
-### Step 3 — Register your public key
+### Step 4 — Register your public key
 
 Before you can send GTC, your public key must be in `validators/pubkeys.json`.
 
@@ -242,11 +250,19 @@ You also need:
 
 Click **Fork** at the top of this page. Your fork is your full node — it contains the entire ledger history.
 
-### Step 2 — Generate your Ed25519 identity
+### Step 2 — Clone and set upstream remote
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/gitcoin
 cd gitcoin
+git remote add upstream https://github.com/gitledger/gitcoin.git
+```
+
+`upstream` is required for the auto-PR feature — it tells the script which repo to open the PR against.
+
+### Step 3 — Generate your Ed25519 identity
+
+```bash
 python3 .github/scripts/generate_keypair.py
 ```
 
@@ -261,7 +277,7 @@ Output:
 
 **Store your private key in a password manager.** If you lose it, you lose access to your coins. Never commit it to any repository.
 
-### Step 3 — Register your public key
+### Step 4 — Register your public key
 
 Before you can send GTC, your public key must be in `validators/pubkeys.json`.
 
