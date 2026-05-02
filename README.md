@@ -16,7 +16,8 @@ No servers, no wallets, no gas fees — just forks, pull requests, and consensus
 | Block | Merge commit on `main` |
 | Hash chain | Git commit history |
 | Validator / miner | Any GitHub account with a registered public key in `validators/pubkeys.json` |
-| Consensus | ⌈2/3⌉ selected validators comment `/approve` |
+| Consensus (TX) | Sender posts `/approve` on their own PR |
+| Consensus (other) | ⌈1/3⌉ of all validators post `/approve` |
 | Double-spend guard | Git merge conflict (two PRs can't delete the same file) |
 | UTXO integrity | Merkle inclusion proof (O(log n) per input) verified against `ledger.json` |
 | Total supply | 4,294,967,295 GTC (fixed, no inflation) |
@@ -36,13 +37,13 @@ No servers, no wallets, no gas fees — just forks, pull requests, and consensus
    a. Verifies Ed25519 signature and UTXO ownership
    b. Verifies Merkle inclusion proof matches the canonical root in ledger.json
    c. Verifies output txids are cryptographically derived from inputs (chain integrity)
-5. On success: tx-valid label + Validator Vote Requested comment posted
-6. Selected validators comment /approve on the PR
-7. When ⌈2/3⌉ approvals are reached, PR can be merged
+5. On success: tx-valid label attached + sender prompted to post /approve
+6. Sender comments /approve on the PR
+7. PR is ready to merge
 8. update-pages.yml rebuilds ledger.json (with new Merkle root) and deploys explorer
 ```
 
-> Non-TX PRs (key registration, code changes) skip validation entirely and get immediate `success` status on both required checks.
+> Non-TX PRs (key registration, code changes) require ⌈1/3⌉ of all validators to post `/approve` before merging.
 
 ---
 
@@ -126,7 +127,7 @@ Before you can send GTC, your public key must be in `validators/pubkeys.json`.
 
 **PR title**: `register: YOUR_GITHUB_USERNAME`
 
-**PR body**: anything (no `TX_VERSION` needed — the workflow detects this is not a TX and auto-approves both required status checks immediately).
+**PR body**: anything (no `TX_VERSION` needed — the workflow detects this is not a TX and requires ⌈1/3⌉ of all validators to approve).
 
 Once merged, you are automatically added to the validator pool.
 
@@ -197,12 +198,13 @@ echo ghp_yourtoken > GH_TOKEN.txt
 
 `GH_TOKEN.txt` is listed in `.gitignore` and will **never be committed**.
 
-### Step 5 — Wait for consensus
+### Step 5 — Approve your transaction
 
 `validate-tx.yml` runs automatically. If valid:
 - `tx-valid` label is attached
-- A **Validator Vote Requested** comment lists selected validators and deadline
-- When ⌈2/3⌉ validators `/approve`, merge the PR
+- A comment asks you to post `/approve` on the PR
+
+Simply comment `/approve` on your own PR and it is ready to merge.
 
 > **If another TX merges while your PR is open**, the Merkle root changes and validation will fail with *"Merkle root mismatch"*. Rerun `create_transaction.py` on the latest `main` to regenerate a fresh proof.
 
@@ -220,11 +222,11 @@ Anyone with a registered public key in `validators/pubkeys.json` is a validator.
 
 ### Scoring (optional metadata)
 
-Scores in `validators/registry.json` influence selection probability. Anyone not listed defaults to **100 points**.
+Scores in `validators/registry.json` are metadata only. Anyone not listed defaults to **100 points**.
 
 | Action | Points |
 |---|---|
-| Comment `/approve` on a valid TX | +20 |
+| Comment `/approve` on a non-TX PR | +20 |
 | Submitting a valid TX that gets merged | +5 |
 
 Inactivity penalty: **−10 points per week** with no `/approve` activity.
@@ -293,7 +295,7 @@ Before you can send GTC, your public key must be in `validators/pubkeys.json`.
 
 **PR title**: `register: YOUR_GITHUB_USERNAME`
 
-**PR body**: anything (no `TX_VERSION` needed — the workflow detects this is not a TX and auto-approves both required status checks immediately).
+**PR body**: anything (no `TX_VERSION` needed — the workflow detects this is not a TX and requires ⌈1/3⌉ of all validators to approve).
 
 Once a maintainer merges the PR, you can start transacting — and you are automatically added to the validator pool.
 
@@ -403,24 +405,24 @@ Anyone with a registered public key in `validators/pubkeys.json` is a validator.
 
 ### Scoring (optional metadata)
 
-Scores in `validators/registry.json` influence selection probability. Anyone not listed defaults to **100 points**.
+Scores in `validators/registry.json` are metadata only. Anyone not listed defaults to **100 points**.
 
 | Action | Points |
 |---|---|
-| Comment `/approve` on a valid TX | +20 |
+| Comment `/approve` on a non-TX PR | +20 |
 | Submitting a valid TX that gets merged | +5 |
 
 Inactivity penalty: **−10 points per week** with no `/approve` activity.
 
-### How to vote
+### How to vote on non-TX PRs
 
-When a transaction PR is validated:
+When a code change or key registration PR is opened:
 
-1. You receive a GitHub @mention in the **Validator Vote Requested** comment.
-2. Visit the PR, review the `utxo/` file changes.
+1. You receive a GitHub @mention in the review comment.
+2. Review the PR changes.
 3. Comment exactly `/approve` to cast your vote.
 
-You have 48 hours. If the threshold is not reached, the PR is automatically expired.
+⌈1/3⌉ of all registered validators must approve before the PR can be merged.
 
 ---
 

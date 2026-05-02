@@ -43,9 +43,32 @@ jobs:
             -f context="validate-tx/validate" \
             -f description="Not a transaction PR, skipping validation"
           gh api "repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}" \
-            -f state=success \
+            -f state=pending \
             -f context="consensus-check/passed" \
-            -f description="Not a transaction PR, consensus not required"
+            -f description="Waiting for 1/3 validator approval"
+          python3 - << 'EOF'
+          import json, math, subprocess, os
+          pubkeys_path = 'validators/pubkeys.json'
+          pubkeys = {}
+          if os.path.exists(pubkeys_path):
+              with open(pubkeys_path) as f:
+                  pubkeys = json.load(f)
+          validators = list(pubkeys.keys())
+          required = math.ceil(len(validators) / 3) if validators else 1
+          mentions = ' '.join(f"@{v}" for v in validators)
+          pr_number = "${{ github.event.pull_request.number }}"
+          comment = (
+              f"## Code Review Required\n\n"
+              f"{mentions}\n\n"
+              f"This PR contains non-transaction changes and requires validator approval before merging.\n\n"
+              f"To approve, post:\n```\n/approve\n```\n\n"
+              f"**Required**: {required} of {len(validators)} validators must approve."
+          )
+          subprocess.run(
+              ['gh', 'pr', 'comment', pr_number, '--body', comment],
+              env=os.environ
+          )
+          EOF
 
       - name: Post validate success + consensus pending for REGISTER_KEY PRs
         if: steps.is_tx.outputs.is_register == 'true'
@@ -59,7 +82,29 @@ jobs:
           gh api "repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}" \
             -f state=pending \
             -f context="consensus-check/passed" \
-            -f description="Waiting for 1 validator /approve to register key"
+            -f description="Waiting for 1/3 validator approval"
+          python3 - << 'EOF'
+          import json, math, subprocess, os
+          pubkeys_path = 'validators/pubkeys.json'
+          pubkeys = {}
+          if os.path.exists(pubkeys_path):
+              with open(pubkeys_path) as f:
+                  pubkeys = json.load(f)
+          validators = list(pubkeys.keys())
+          required = math.ceil(len(validators) / 3) if validators else 1
+          mentions = ' '.join(f"@{v}" for v in validators)
+          pr_number = "${{ github.event.pull_request.number }}"
+          comment = (
+              f"## Key Registration Review Required\n\n"
+              f"{mentions}\n\n"
+              f"A new public key registration is pending. Review and approve with:\n```\n/approve\n```\n\n"
+              f"**Required**: {required} of {len(validators)} validators must approve."
+          )
+          subprocess.run(
+              ['gh', 'pr', 'comment', pr_number, '--body', comment],
+              env=os.environ
+          )
+          EOF
 
       - name: Install Python dependencies
         if: steps.is_tx.outputs.is_tx == 'true'
@@ -123,94 +168,34 @@ jobs:
             2>&1 | tee /tmp/result.txt
           exit ${PIPESTATUS[0]}
 
-      - name: Post success status and assign validators
+      - name: Post success status and request sender approval
         if: steps.validate.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RUN_ID: ${{ github.run_id }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           gh api "repos/${{ github.repository }}/statuses/${HEAD_SHA}" \
             -f state=success \
             -f context="validate-tx/validate" \
             -f description="Transaction is valid"
+          gh api "repos/${{ github.repository }}/statuses/${HEAD_SHA}" \
+            -f state=pending \
+            -f context="consensus-check/passed" \
+            -f description="Waiting for sender @${PR_AUTHOR} to post /approve"
           gh pr edit "${PR_NUMBER}" --add-label "tx-valid" 2>/dev/null || true
           gh pr edit "${PR_NUMBER}" --remove-label "tx-invalid" 2>/dev/null || true
+          gh pr comment "${PR_NUMBER}" --body "## Transaction Valid
 
-          python3 - << 'EOF'
-          import json, random, math, subprocess, os, sys
-          from datetime import datetime, timezone, timedelta
+@${PR_AUTHOR} — Your transaction has been validated successfully.
 
-          # Load pubkeys.json as validator pool
-          pubkeys_path = 'validators/pubkeys.json'
-          pubkeys = {}
-          if os.path.exists(pubkeys_path):
-              with open(pubkeys_path) as f:
-                  pubkeys = json.load(f)
+To confirm and approve this PR for merging, post:
+\`\`\`
+/approve
+\`\`\`
 
-          # Load registry for scoring metadata (optional)
-          registry_map = {}
-          registry_path = 'validators/registry.json'
-          if os.path.exists(registry_path):
-              with open(registry_path) as f:
-                  reg = json.load(f)
-              for v in reg.get('validators', []):
-                  registry_map[v['username']] = v
-
-          now = datetime.now(timezone.utc)
-          active = []
-          for username in pubkeys:
-              reg_entry = registry_map.get(username, {})
-              score = reg_entry.get('score', 100)
-              last_active_str = reg_entry.get('last_active', '')
-              if last_active_str:
-                  try:
-                      last_active = datetime.fromisoformat(last_active_str.replace('Z', '+00:00'))
-                      weeks_inactive = max(0, (now - last_active).days // 7)
-                      score -= weeks_inactive * 10
-                  except ValueError:
-                      pass
-              if score >= 0:
-                  active.append({'username': username})
-
-          if not active:
-              print("ERROR: No validators found in pubkeys.json", file=sys.stderr)
-              sys.exit(1)
-
-          rng = random.Random(int(os.environ['RUN_ID']))
-          selected_count = min(7, len(active))
-          selected = rng.sample(active, selected_count)
-          required = math.ceil(selected_count * 2 / 3)
-          usernames = [v['username'] for v in selected]
-          mentions = ' '.join(f"@{u}" for u in usernames)
-          deadline = (now + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M UTC')
-
-          comment = (
-              f"## Validator Vote Requested\n\n"
-              f"{mentions}\n\n"
-              f"You have been selected to validate this transaction. "
-              f"To cast your vote, post the following comment on this PR:\n\n"
-              f"```\n/approve\n```\n\n"
-              f"**Consensus required**: {required} of {selected_count} selected validators\n"
-              f"**Deadline**: {deadline}\n\n"
-              f"If {required} approvals are not received by the deadline, "
-              f"this transaction will be automatically expired.\n\n"
-              f"---\n"
-              f"<!-- GITCOIN_VALIDATORS:{','.join(usernames)} -->\n"
-              f"<!-- GITCOIN_REQUIRED:{required} -->"
-          )
-
-          r = subprocess.run(
-              ['gh', 'pr', 'comment', os.environ['PR_NUMBER'], '--body', comment],
-              capture_output=True, text=True, env=os.environ
-          )
-          if r.returncode != 0:
-              print(f"ERROR: Failed to post comment: {r.stderr}", file=sys.stderr)
-              sys.exit(1)
-
-          print(f"Assigned {selected_count} validators, {required} approvals required: {', '.join(usernames)}")
-          EOF
+No external validators are required — only your explicit approval is needed."
 
       - name: Post failure status
         if: steps.validate.outcome == 'failure'
