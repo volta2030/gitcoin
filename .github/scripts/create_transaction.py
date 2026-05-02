@@ -429,20 +429,20 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
 
     # --- git add ---
     print(f"\n  git add utxo/")
-    r = subprocess.run(['git', 'add', 'utxo/'], capture_output=True, text=True)
+    r = subprocess.run(['git', 'add', 'utxo/'], capture_output=True, text=True, encoding='utf-8')
     if r.returncode != 0:
         print(f"ERROR: git add failed: {r.stderr.strip()}")
         return
 
     # --- git checkout -b <branch> (create new branch) ---
     current = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
-                             capture_output=True, text=True).stdout.strip()
+                             capture_output=True, text=True, encoding='utf-8').stdout.strip()
     if current != branch:
         print(f"  git switch -c {branch}")
-        r = subprocess.run(['git', 'switch', '-c', branch], capture_output=True, text=True)
+        r = subprocess.run(['git', 'switch', '-c', branch], capture_output=True, text=True, encoding='utf-8')
         if r.returncode != 0:
             # branch may already exist
-            r = subprocess.run(['git', 'switch', branch], capture_output=True, text=True)
+            r = subprocess.run(['git', 'switch', branch], capture_output=True, text=True, encoding='utf-8')
             if r.returncode != 0:
                 print(f"ERROR: git switch failed: {r.stderr.strip()}")
                 return
@@ -450,7 +450,7 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
     # --- git commit ---
     msg_file = Path('.git/GITCOIN_TX_MSG')
     print(f"  git commit -F .git/GITCOIN_TX_MSG")
-    r = subprocess.run(['git', 'commit', '-F', str(msg_file)], capture_output=True, text=True)
+    r = subprocess.run(['git', 'commit', '-F', str(msg_file)], capture_output=True, text=True, encoding='utf-8')
     if r.returncode != 0:
         print(f"ERROR: git commit failed: {r.stderr.strip()}")
         return
@@ -458,13 +458,13 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
 
     # --- git push ---
     print(f"  git push origin {branch}")
-    r = subprocess.run(['git', 'push', 'origin', branch], capture_output=True, text=True)
+    r = subprocess.run(['git', 'push', 'origin', branch], capture_output=True, text=True, encoding='utf-8')
     if r.returncode != 0:
         print(f"ERROR: git push failed: {r.stderr.strip()}")
         return
 
     # --- Determine head ref for fork support ---
-    r = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True)
+    r = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True, encoding='utf-8')
     origin_url = r.stdout.strip()
     m = re.search(r'github\.com[:/](.+?)(?:\.git)?$', origin_url)
     owner = m.group(1).split('/')[0] if m else None
@@ -484,7 +484,7 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
         '--body', body,
         '--base', 'main',
         '--head', head_ref,
-    ], capture_output=True, text=True, env=env)
+    ], capture_output=True, text=True, encoding='utf-8', env=env)
 
     if result.returncode == 0:
         print(f"\nPR created: {result.stdout.strip()}")
