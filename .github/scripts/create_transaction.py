@@ -467,14 +467,23 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
     r = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True, encoding='utf-8')
     origin_url = r.stdout.strip()
     m = re.search(r'github\.com[:/](.+?)(?:\.git)?$', origin_url)
-    owner = m.group(1).split('/')[0] if m else None
-    upstream_repo = 'gitledger/gitcoin'
-    head_ref = f"{owner}:{branch}" if owner and owner != 'volta2030' else branch
+    repo_path = m.group(1) if m else None          # e.g. "volta2030/gitcoin"
+    owner = repo_path.split('/')[0] if repo_path else None
+
+    # Resolve upstream: check for 'upstream' remote first, fall back to origin repo
+    r2 = subprocess.run(['git', 'remote', 'get-url', 'upstream'], capture_output=True, text=True, encoding='utf-8')
+    if r2.returncode == 0:
+        m2 = re.search(r'github\.com[:/](.+?)(?:\.git)?$', r2.stdout.strip())
+        upstream_repo = m2.group(1) if m2 else repo_path
+    else:
+        upstream_repo = repo_path  # owner repo: PR to itself
+
+    head_ref = f"{owner}:{branch}" if upstream_repo != repo_path else branch
 
     # --- Create PR via GitHub REST API ---
     title = f"tx: {from_user} \u2192 {to_user} {amount} GTC"
     body = '\n'.join(pr_body_lines)
-    manual_url = f"https://github.com/gitledger/gitcoin/compare/main...{head_ref}?expand=1"
+    manual_url = f"https://github.com/{upstream_repo}/compare/main...{head_ref}?expand=1"
 
     print(f"\n  Creating PR via GitHub API ...")
     import urllib.request, urllib.error
