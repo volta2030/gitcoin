@@ -24,7 +24,6 @@ The script reads input UTXO files from the local utxo/ directory
 import base64
 import hashlib
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -472,37 +471,38 @@ def _auto_commit_push_pr(from_user: str, to_user: str, amount: int, pr_body_line
     upstream_repo = 'gitledger/gitcoin'
     head_ref = f"{owner}:{branch}" if owner and owner != 'volta2030' else branch
 
-    # --- gh pr create ---
+    # --- Create PR via GitHub REST API ---
     title = f"tx: {from_user} \u2192 {to_user} {amount} GTC"
     body = '\n'.join(pr_body_lines)
-    env = {**os.environ, 'GH_TOKEN': token}
-
     manual_url = f"https://github.com/gitledger/gitcoin/compare/main...{head_ref}?expand=1"
 
-    if not shutil.which('gh'):
-        print(f"\nWARNING: GitHub CLI (gh) not found in PATH.")
-        print(f"Branch '{branch}' has been pushed. Open PR manually at:")
-        print(f"  {manual_url}")
-        return
-
-    print(f"\n  gh pr create ...")
-    result = subprocess.run([
-        'gh', 'pr', 'create',
-        '--repo', upstream_repo,
-        '--title', title,
-        '--body', body,
-        '--base', 'main',
-        '--head', head_ref,
-    ], capture_output=True, text=True, encoding='utf-8', env=env)
-
-    if result.returncode == 0:
-        print(f"\nPR created: {result.stdout.strip()}")
-    else:
-        err = result.stderr.strip()
-        if 'already exists' in err:
+    print(f"\n  Creating PR via GitHub API ...")
+    import urllib.request, urllib.error
+    api_url = f"https://api.github.com/repos/{upstream_repo}/pulls"
+    payload = json.dumps({
+        'title': title,
+        'body': body,
+        'head': head_ref,
+        'base': 'main',
+    }).encode('utf-8')
+    req = urllib.request.Request(api_url, data=payload, method='POST')
+    req.add_header('Authorization', f'Bearer {token}')
+    req.add_header('Accept', 'application/vnd.github+json')
+    req.add_header('Content-Type', 'application/json')
+    req.add_header('X-GitHub-Api-Version', '2022-11-28')
+    try:
+        with urllib.request.urlopen(req) as resp:
+            pr_data = json.loads(resp.read().decode('utf-8'))
+            print(f"\nPR created: {pr_data['html_url']}")
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode('utf-8')
+        err_json = json.loads(err_body) if err_body else {}
+        msg = err_json.get('errors', [{}])[0].get('message', '') or err_json.get('message', '')
+        if 'A pull request already exists' in msg or e.code == 422:
             print(f"\nPR already exists for branch '{branch}'.")
+            print(f"View at: {manual_url}")
         else:
-            print(f"\nERROR creating PR: {err}")
+            print(f"\nERROR creating PR (HTTP {e.code}): {msg or err_body}")
             print(f"Open manually at: {manual_url}")
 
 
