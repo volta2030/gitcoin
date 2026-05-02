@@ -186,7 +186,7 @@ jobs:
             -f description="Waiting for sender @${PR_AUTHOR} to post /approve"
           gh pr edit "${PR_NUMBER}" --add-label "tx-valid" 2>/dev/null || true
           gh pr edit "${PR_NUMBER}" --remove-label "tx-invalid" 2>/dev/null || true
-          gh pr comment "${PR_NUMBER}" --body "## Transaction Valid
+          COMMENT_BODY="## Transaction Valid
 
 @${PR_AUTHOR} — Your transaction has been validated successfully.
 
@@ -196,6 +196,7 @@ To confirm and approve this PR for merging, post:
 \`\`\`
 
 No external validators are required — only your explicit approval is needed."
+          gh pr comment "${PR_NUMBER}" --body "${COMMENT_BODY}"
 
       - name: Post failure status
         if: steps.validate.outcome == 'failure'
