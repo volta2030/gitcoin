@@ -28,5 +28,8 @@ desktop.ini
 # NEVER commit private keys
 *.pem
 id_ed25519
+
+# GitHub token for auto-PR (never commit)
+GH_TOKEN.txt
 private_key*
 *_private*

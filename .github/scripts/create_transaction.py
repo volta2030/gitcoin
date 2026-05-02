@@ -401,7 +401,7 @@ def main():
     print(f"  git push")
 
     # Auto-create PR using GH_TOKEN if available
-    auto_pr = input("\nAuto-create PR now? (requires GH_TOKEN env var) [Y/n]: ").strip().lower()
+    auto_pr = input("\nAuto-create PR now? (requires GH_TOKEN or GH_TOKEN.txt) [Y/n]: ").strip().lower()
     if auto_pr in ('', 'y', 'yes'):
         _auto_create_pr(from_user, to_user, amount, pr_body_lines)
 
@@ -409,9 +409,16 @@ def main():
 def _auto_create_pr(from_user: str, to_user: str, amount: int, pr_body_lines: list):
     import os
     token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
+    # Fall back to GH_TOKEN.txt in repo root
     if not token:
-        print("\nERROR: GH_TOKEN environment variable not set.")
-        print("Set it with:  export GH_TOKEN=ghp_yourtoken")
+        token_file = Path('GH_TOKEN.txt')
+        if token_file.exists():
+            token = token_file.read_text(encoding='utf-8').strip()
+    if not token:
+        print("\nERROR: GitHub token not found.")
+        print("Create GH_TOKEN.txt in the repo root with your PAT:")
+        print("  echo ghp_yourtoken > GH_TOKEN.txt")
+        print("(GH_TOKEN.txt is in .gitignore and will never be committed)")
         print("Then open the PR manually at:")
         print("  https://github.com/volta2030/gitcoin/compare")
         return
