@@ -575,9 +575,9 @@ In your repository **Settings → Pages**:
 - Set **Source** to **GitHub Actions**
 
 In your repository **Settings → Actions → General**:
-- Set **Workflow permissions** to **Read and write permissions**
+- Ensure GitHub Actions can request the permissions needed for **GitHub Pages deployment** (Pages/OIDC), rather than repository contents writes
 
-> Both settings are required: Pages for the deployment target, and write permissions so the workflow can push the built `ledger.json` artifact.
+> Both settings are required: Pages provides the deployment target, and the workflow deploys the generated `docs/ledger.json` via the GitHub Pages artifact flow rather than committing or pushing it back to the repository.
 
 ### 7. Configure Branch Protection (do this last)
 
