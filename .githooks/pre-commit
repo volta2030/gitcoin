@@ -1,0 +1,74 @@
+#!/bin/sh
+# Pre-commit hook: validate YAML syntax of staged workflow files.
+# Requires: python3 with pyyaml (pip install pyyaml)
+#
+# Install: git config core.hooksPath .githooks
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^\.github/workflows/.*\.yml$')
+
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+FAILED=0
+
+for FILE in $STAGED; do
+    # Write staged content to a temp file (respects partial-stage scenarios)
+    TMPFILE=$(mktemp /tmp/workflow_XXXXXX.yml)
+    git show ":$FILE" > "$TMPFILE" 2>/dev/null
+
+    RESULT=$(python -c "
+import yaml, sys
+
+path = sys.argv[1]
+try:
+    with open(path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    yaml.safe_load(content)
+    # Extra check: no unindented lines inside a run: | block
+    in_run_block = False
+    block_indent = 0
+    for lineno, line in enumerate(content.splitlines(), 1):
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if not stripped or stripped.startswith('#'):
+            continue
+        if stripped.startswith('run:'):
+            in_run_block = True
+            block_indent = indent
+            continue
+        if in_run_block:
+            if indent <= block_indent and stripped and not stripped.startswith('-'):
+                # We left the run block
+                in_run_block = False
+            # A non-empty line at column 0 inside a run block is always wrong
+            elif indent == 0 and stripped:
+                print(f'ERROR: line {lineno} has zero indentation inside a run: block')
+                print(f'  {line}')
+                sys.exit(1)
+    sys.exit(0)
+except yaml.YAMLError as e:
+    print(f'YAML ERROR: {e}')
+    sys.exit(1)
+" "$TMPFILE" 2>&1)
+
+    STATUS=$?
+    rm -f "$TMPFILE"
+
+    if [ $STATUS -ne 0 ]; then
+        echo "---"
+        echo "YAML validation FAILED: $FILE"
+        echo "$RESULT"
+        FAILED=1
+    else
+        echo "YAML OK: $FILE"
+    fi
+done
+
+if [ $FAILED -ne 0 ]; then
+    echo ""
+    echo "Commit aborted. Fix the YAML errors above and try again."
+    exit 1
+fi
+
+exit 0
