@@ -1,7 +1,9 @@
 name: Auto Merge on Consensus
 
+# Disabled: GITHUB_TOKEN-based status writes do not trigger the 'status' event.
+# PRs must be merged manually after consensus-check/passed turns green.
 on:
-  status:
+  workflow_dispatch:
 
 permissions:
   contents: read

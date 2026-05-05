@@ -22,7 +22,7 @@ jobs:
 
       - name: Count validator approvals and update status
         env:
-          GH_TOKEN: ${{ secrets.TX_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.issue.number }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           EVENT_ACTION: ${{ github.event.action }}
