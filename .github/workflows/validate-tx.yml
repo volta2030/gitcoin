@@ -201,16 +201,7 @@ jobs:
             -f description="Waiting for sender @${PR_AUTHOR} to post /approve"
           gh pr edit "${PR_NUMBER}" --add-label "tx-valid" 2>/dev/null || true
           gh pr edit "${PR_NUMBER}" --remove-label "tx-invalid" 2>/dev/null || true
-          COMMENT_BODY="## Transaction Valid
-
-@${PR_AUTHOR} — Your transaction has been validated successfully.
-
-To confirm and approve this PR for merging, post:
-\`\`\`
-/approve
-\`\`\`
-
-No external validators are required — only your explicit approval is needed."
+          COMMENT_BODY=$(printf '## Transaction Valid\n\n@%s \u2014 Your transaction has been validated successfully.\n\nTo confirm and approve this PR for merging, post:\n```\n/approve\n```\n\nNo external validators are required \u2014 only your explicit approval is needed.' "${PR_AUTHOR}")
           gh pr comment "${PR_NUMBER}" --body "${COMMENT_BODY}"
 
       - name: Post failure status
@@ -229,7 +220,7 @@ No external validators are required — only your explicit approval is needed."
           gh pr comment ${{ github.event.pull_request.number }} --body "${BODY}"
 
       - name: Post error status on unexpected failure
-        if: steps.is_tx.outputs.is_tx == 'true' && steps.is_tx.outputs.is_register != 'true' && steps.validate.outcome == '' && failure()
+        if: failure() && steps.is_tx.outputs.is_tx == 'true' && steps.is_tx.outputs.is_register != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
