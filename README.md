@@ -3,7 +3,9 @@
 A fully decentralized token ecosystem that runs entirely on GitHub.
 No servers, no wallets, no gas fees — just forks, pull requests, and consensus.
 
-**Live Balance Explorer**: https://gitledger.github.io/gitcoin/ — Balances, Transactions, Validators tabs
+**Live Balance Explorer**:
+- **Root ledger**: https://gitledger.github.io/gitcoin/ — Balances, Transactions, Validators tabs
+- **Your fork**: `https://{your-github-username}.github.io/gitcoin/` — available after enabling GitHub Pages in your fork's Settings
 
 ---
 
