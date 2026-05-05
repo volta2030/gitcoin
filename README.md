@@ -169,6 +169,27 @@ cat docs/ledger.json   # includes merkle_root and utxo_txids
 
 ---
 
+## Validating the Chain
+
+Run a full, independent audit of the entire ledger state from the repository root:
+
+```bash
+git pull origin main
+python3 .github/scripts/validate_full.py
+```
+
+This checks:
+- Every `utxo/*.json` file is well-formed and internally consistent
+- No txid appears more than once (no double-spend)
+- Total supply across all UTXOs matches `docs/ledger.json`
+- Every UTXO owner has a registered Ed25519 public key
+- The Merkle root recomputed from all txids matches `docs/ledger.json`
+- Every TX commit in git history conserves value and uses the correct txid derivation formula
+
+See [VALIDATION.md](VALIDATION.md) for detailed documentation on both full-chain and per-TX validation.
+
+---
+
 ## Sending GTC
 
 ### Step 1 — Pull the latest state
