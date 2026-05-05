@@ -34,6 +34,10 @@ jobs:
       - name: Generate ledger snapshot
         run: python3 .github/scripts/update_ledger.py
 
+      - name: Inject repository name into explorer
+        run: |
+          sed -i "s|__REPO__|${{ github.repository }}|g" docs/index.html
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 

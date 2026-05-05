@@ -1,9 +1,13 @@
 # GitCoin ⛓
 
+[![GitHub Pages](https://img.shields.io/badge/Explorer-gitledger.github.io%2Fgitcoin-blue?logo=github)](https://gitledger.github.io/gitcoin/)
+
 A fully decentralized token ecosystem that runs entirely on GitHub.
 No servers, no wallets, no gas fees — just forks, pull requests, and consensus.
 
-**Live Balance Explorer**: https://gitledger.github.io/gitcoin/ — Balances, Transactions, Validators tabs
+**Live Balance Explorer**:
+- **Root ledger**: https://gitledger.github.io/gitcoin/ — Balances, Transactions, Validators tabs
+- **Your fork**: `https://{your-github-username}.github.io/gitcoin/` — see [Fork Explorer Setup](#fork-explorer-setup) below
 
 ---
 
@@ -130,6 +134,23 @@ Before you can send GTC, your public key must be in `validators/pubkeys.json`.
 **PR body**: anything (no `TX_VERSION` needed — the workflow detects this is not a TX and requires ⌈1/3⌉ of all validators to approve).
 
 Once merged, you are automatically added to the validator pool.
+
+---
+
+## Fork Explorer Setup
+
+To get your own explorer at `https://{your-username}.github.io/gitcoin/`:
+
+1. **Settings → Pages → Source**: set to **GitHub Actions**
+2. **Settings → Actions → General → Workflow permissions**: set to **Read and write permissions**
+
+Once configured, the explorer auto-deploys whenever `utxo/` or `validators/` changes on `main`.
+
+To add a badge to your fork's README, replace the badge URL at the top of this file:
+
+```markdown
+[![GitHub Pages](https://img.shields.io/badge/Explorer-YOUR__USERNAME.github.io%2Fgitcoin-blue?logo=github)](https://YOUR_USERNAME.github.io/gitcoin/)
+```
 
 ---
 
@@ -552,6 +573,11 @@ git push origin main
 
 In your repository **Settings → Pages**:
 - Set **Source** to **GitHub Actions**
+
+In your repository **Settings → Actions → General**:
+- Ensure GitHub Actions can request the permissions needed for **GitHub Pages deployment** (Pages/OIDC), rather than repository contents writes
+
+> Both settings are required: Pages provides the deployment target, and the workflow deploys the generated `docs/ledger.json` via the GitHub Pages artifact flow rather than committing or pushing it back to the repository.
 
 ### 7. Configure Branch Protection (do this last)
 
