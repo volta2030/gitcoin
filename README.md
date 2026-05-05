@@ -181,9 +181,9 @@ python3 .github/scripts/validate_full.py
 This checks:
 - Every `utxo/*.json` file is well-formed and internally consistent
 - No txid appears more than once (no double-spend)
-- Total supply across all UTXOs matches `docs/ledger.json`
+- Total supply across all UTXOs matches the published ledger snapshot on GitHub Pages (`docs/ledger.json` in the Pages site; on a fresh clone the checked-out file on `main` may still be a placeholder, so `validate_full.py` falls back to the remote copy)
 - Every UTXO owner has a registered Ed25519 public key
-- The Merkle root recomputed from all txids matches `docs/ledger.json`
+- The Merkle root recomputed from all txids matches that same published ledger snapshot
 - Every TX commit in git history conserves value and uses the correct txid derivation formula
 
 See [VALIDATION.md](VALIDATION.md) for detailed documentation on both full-chain and per-TX validation.
