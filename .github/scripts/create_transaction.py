@@ -306,13 +306,19 @@ def main():
     # Build output UTXO JSON files
     # Note: created_at_block is set to the nonce placeholder; the real block hash
     # will differ after merge. The validator checks amounts/owners, not the block hash.
+    height_result = subprocess.run(
+        ['git', 'rev-list', '--count', 'HEAD'],
+        capture_output=True, text=True
+    )
+    current_height = int(height_result.stdout.strip()) if height_result.returncode == 0 else 0
+
     output_to_utxo = {
         "txid": output_to_txid,
         "owner": to_user,
         "amount": amount,
         "unit": "GTC",
         "created_at_block": tx_nonce,
-        "created_at_height": 0
+        "created_at_height": current_height
     }
     output_change_utxo = None
     if output_change_txid:
@@ -322,7 +328,7 @@ def main():
             "amount": change_amount,
             "unit": "GTC",
             "created_at_block": tx_nonce,
-            "created_at_height": 0
+            "created_at_height": current_height
         }
 
     # Print the PR body
