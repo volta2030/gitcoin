@@ -106,6 +106,21 @@ jobs:
           )
           EOF
 
+      - name: Set initial pending status for TX PRs
+        if: steps.is_tx.outputs.is_tx == 'true' && steps.is_tx.outputs.is_register != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${HEAD_SHA}" \
+            -f state=pending \
+            -f context="validate-tx/validate" \
+            -f description="Validating transaction..."
+          gh api "repos/${{ github.repository }}/statuses/${HEAD_SHA}" \
+            -f state=pending \
+            -f context="consensus-check/passed" \
+            -f description="Waiting for transaction validation to complete"
+
       - name: Install Python dependencies
         if: steps.is_tx.outputs.is_tx == 'true'
         run: pip install cryptography --quiet
@@ -199,7 +214,7 @@ No external validators are required — only your explicit approval is needed."
           gh pr comment "${PR_NUMBER}" --body "${COMMENT_BODY}"
 
       - name: Post failure status
-        if: steps.validate.outcome == 'failure'
+        if: steps.is_tx.outputs.is_tx == 'true' && steps.is_tx.outputs.is_register != 'true' && steps.validate.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -212,3 +227,14 @@ No external validators are required — only your explicit approval is needed."
           gh pr edit ${{ github.event.pull_request.number }} --remove-label "tx-valid" 2>/dev/null || true
           BODY=$(printf '❌ **Transaction validation failed:**\n\n```\n%s\n```' "$(cat /tmp/result.txt)")
           gh pr comment ${{ github.event.pull_request.number }} --body "${BODY}"
+
+      - name: Post error status on unexpected failure
+        if: steps.is_tx.outputs.is_tx == 'true' && steps.is_tx.outputs.is_register != 'true' && steps.validate.outcome == '' && failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${HEAD_SHA}" \
+            -f state=error \
+            -f context="validate-tx/validate" \
+            -f description="Workflow error — check Actions logs"
